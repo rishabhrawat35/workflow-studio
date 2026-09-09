@@ -1,0 +1,281 @@
+<title>Workflow Studio</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#F6F7F5; --panel:#FFFFFF; --ink:#1B2430; --ink-2:#4B5563; --ink-3:#8A94A3;
+  --line:#D9DEE3; --line-2:#EDF0F2;
+  --accent:#0E7C7B; --accent-soft:#D9EFEE;
+  --decision:#B4620A; --decision-soft:#F9E8D2;
+  --handoff:#5B3FBF; --handoff-soft:#E6E0F8;
+  --end:#5E6B7A; --end-soft:#E5E9ED;
+  --sel:#0E7C7B;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#141920; --panel:#1B222B; --ink:#E8ECF0; --ink-2:#B4BDC8; --ink-3:#77818E;
+    --line:#2C3541; --line-2:#222A34;
+    --accent:#3FB5B0; --accent-soft:#173A39;
+    --decision:#E39A45; --decision-soft:#3E2A14;
+    --handoff:#A28CF0; --handoff-soft:#2A2247;
+    --end:#9AA6B4; --end-soft:#2A323C;
+    --sel:#3FB5B0;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#141920; --panel:#1B222B; --ink:#E8ECF0; --ink-2:#B4BDC8; --ink-3:#77818E;
+  --line:#2C3541; --line-2:#222A34;
+  --accent:#3FB5B0; --accent-soft:#173A39;
+  --decision:#E39A45; --decision-soft:#3E2A14;
+  --handoff:#A28CF0; --handoff-soft:#2A2247;
+  --end:#9AA6B4; --end-soft:#2A323C;
+  --sel:#3FB5B0;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 "IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;height:100vh;display:grid;grid-template-columns:240px 1fr 320px;grid-template-rows:48px 1fr;overflow:hidden}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+header{grid-column:1/4;display:flex;align-items:center;gap:16px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.01em}
+header .crumb{color:var(--ink-3)}
+header .crumb b{color:var(--ink);font-weight:500}
+header .spacer{flex:1}
+header button{font:inherit;font-size:13px;padding:5px 11px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;cursor:pointer}
+header button:hover{border-color:var(--ink-3)}
+header button:focus-visible,.wf:focus-visible{outline:2px solid var(--sel);outline-offset:1px}
+nav{border-right:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px 0}
+nav .g{padding:10px 16px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.wf{display:block;width:100%;text-align:left;font:inherit;padding:6px 16px;border:0;background:none;color:var(--ink);cursor:pointer}
+.wf:hover{background:var(--line-2)}
+.wf.active{background:var(--accent-soft);color:var(--accent);font-weight:500}
+.wf small{display:block;color:var(--ink-3);font-size:12px}
+nav .empty{padding:12px 16px;color:var(--ink-3);font-size:13px;line-height:1.5}
+main{position:relative;overflow:hidden}
+svg#canvas{width:100%;height:100%;display:block;cursor:grab}
+svg#canvas:active{cursor:grabbing}
+.node{cursor:pointer}
+.node rect,.node polygon{fill:var(--panel);stroke:var(--line);stroke-width:1.2}
+.node.step rect{stroke:var(--accent)}
+.node.decision polygon{stroke:var(--decision);fill:var(--decision-soft)}
+.node.handoff rect{stroke:var(--handoff);stroke-dasharray:5 3;fill:var(--handoff-soft)}
+.node.end rect{stroke:var(--end);fill:var(--end-soft)}
+.node.entry rect{stroke-width:2}
+.node.selected rect,.node.selected polygon{stroke:var(--sel);stroke-width:2.4}
+.node text{fill:var(--ink);font-size:13px;font-family:inherit;pointer-events:none}
+.node text.id{fill:var(--ink-3);font-size:10.5px;font-family:"IBM Plex Mono",monospace}
+.node.wf rect{fill:var(--panel);stroke:var(--accent);rx:8}
+.node.wf text.n{font-weight:600}
+.node.wf text.sub{fill:var(--ink-2);font-size:11.5px}
+.edge path{fill:none;stroke:var(--ink-3);stroke-width:1.4}
+.edge.hand path{stroke:var(--handoff);stroke-dasharray:5 3}
+.edge text{fill:var(--ink-2);font-size:11px;font-family:inherit;paint-order:stroke;stroke:var(--paper);stroke-width:4px;stroke-linejoin:round}
+.cluster rect{fill:none;stroke:var(--line);stroke-dasharray:4 4;rx:12}
+.cluster text{fill:var(--ink-3);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.legend{position:absolute;left:12px;bottom:12px;display:flex;gap:14px;padding:6px 10px;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:12px;color:var(--ink-2)}
+.legend i{display:inline-block;width:12px;height:12px;border:1.5px solid;vertical-align:-2px;margin-right:5px;border-radius:2px}
+.legend .s i{border-color:var(--accent)} .legend .d i{border-color:var(--decision);background:var(--decision-soft);transform:rotate(45deg) scale(.8)}
+.legend .h i{border-color:var(--handoff);background:var(--handoff-soft);border-style:dashed} .legend .e i{border-color:var(--end);background:var(--end-soft);border-radius:8px}
+.hint{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink-3);text-align:center;padding:40px;line-height:1.6}
+.hint b{color:var(--ink-2);font-weight:500}
+aside{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:18px 20px}
+aside h2{font-size:16px;margin:0 0 2px;text-wrap:balance}
+aside .tag{display:inline-block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:4px;margin-bottom:12px}
+.tag.step{color:var(--accent);background:var(--accent-soft)} .tag.decision{color:var(--decision);background:var(--decision-soft)}
+.tag.handoff{color:var(--handoff);background:var(--handoff-soft)} .tag.end{color:var(--end);background:var(--end-soft)}
+aside dl{margin:0;display:grid;grid-template-columns:1fr;gap:12px}
+aside dt{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px}
+aside dd{margin:0;color:var(--ink);white-space:pre-wrap;max-width:60ch}
+aside dd.notes{color:var(--ink-2);border-left:2px solid var(--line);padding-left:10px}
+aside ul{margin:0;padding-left:18px} aside li{margin:2px 0}
+aside a{color:var(--accent);cursor:pointer;text-decoration:underline dotted}
+aside .muted{color:var(--ink-3)}
+@media (prefers-reduced-motion:no-preference){ .node rect,.node polygon{transition:stroke-width .12s} }
+</style>
+
+<header>
+  <h1>Workflow Studio</h1>
+  <span class="crumb" id="crumb"></span>
+  <span class="spacer"></span>
+  <button id="btnMap">All workflows</button>
+  <button id="btnFit">Fit</button>
+</header>
+<nav id="nav"></nav>
+<main>
+  <svg id="canvas" xmlns="http://www.w3.org/2000/svg"><g id="view"></g></svg>
+  <div class="legend" id="legend" hidden>
+    <span class="s"><i></i>step</span><span class="d"><i></i>decision</span><span class="h"><i></i>handoff</span><span class="e"><i></i>end</span>
+  </div>
+  <div class="hint" id="hint"></div>
+</main>
+<aside id="inspector"></aside>
+
+<!-- DATA:BEGIN — regenerated by tools/build.py from map.yaml and workflows/*.yaml; do not edit by hand -->
+<script type="application/json" id="data">{"map":{"groups":[]},"workflows":[]}</script>
+<!-- DATA:END -->
+
+<script>
+(function(){
+  const $=s=>document.querySelector(s);
+  const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const DATA=JSON.parse($('#data').textContent);
+  const groups=DATA.map.groups||[], wfDocs=DATA.workflows||[];
+  const WF={}; wfDocs.forEach(w=>WF[w.id]=w);
+  const state={mode:'map',wf:null,sel:null};
+
+  // ---------- helpers ----------
+  const targets=s=>(s.next||[]).map(t=>typeof t==='string'?{to:t}:t);
+  const handoffsOf=w=>(w.steps||[]).filter(s=>s.type==='handoff'&&s.to);
+  const inbound=wid=>wfDocs.flatMap(w=>handoffsOf(w).filter(h=>h.to.split('.')[0]===wid).map(h=>({from:w,step:h})));
+  function wrap(text,max){const words=String(text).split(/\s+/),lines=[];let cur='';for(const w of words){if((cur+' '+w).trim().length>max&&cur){lines.push(cur);cur=w}else cur=(cur+' '+w).trim()}if(cur)lines.push(cur);return lines}
+
+  // ---------- layered layout (top-to-bottom) ----------
+  // nodes: [{id,w,h}], edges: [{from,to,label}] -> {nodes with x,y (centers), edges with back:bool, width, height}
+  function layout(nodes,edges,opt){
+    const NS=opt.nodesep||36, RS=opt.ranksep||56;
+    const byId={};nodes.forEach(n=>byId[n.id]=n);
+    const out={};nodes.forEach(n=>out[n.id]=[]);edges.forEach(e=>{if(byId[e.from]&&byId[e.to])out[e.from].push(e)});
+    // back edges via DFS from the first node, then from any unvisited
+    const color={};edges.forEach(e=>e.back=false);
+    function dfs(u){color[u]=1;for(const e of out[u]){if(color[e.to]===1)e.back=true;else if(!color[e.to])dfs(e.to)}color[u]=2}
+    nodes.forEach(n=>{if(!color[n.id])dfs(n.id)});
+    // ranks = longest path over forward edges
+    const rank={};nodes.forEach(n=>rank[n.id]=0);
+    let changed=true,guard=0;while(changed&&guard++<nodes.length+2){changed=false;edges.forEach(e=>{if(!e.back&&byId[e.from]&&byId[e.to]&&rank[e.to]<rank[e.from]+1){rank[e.to]=rank[e.from]+1;changed=true}})}
+    const R=Math.max(-1,...nodes.map(n=>rank[n.id]))+1;const rows=Array.from({length:R},()=>[]);
+    nodes.forEach(n=>rows[rank[n.id]].push(n.id));
+    // barycenter ordering, a few sweeps
+    const pos={};rows.forEach(r=>r.forEach((id,i)=>pos[id]=i));
+    const preds={},succs={};nodes.forEach(n=>{preds[n.id]=[];succs[n.id]=[]});edges.forEach(e=>{if(!e.back&&byId[e.from]&&byId[e.to]){preds[e.to].push(e.from);succs[e.from].push(e.to)}});
+    const bary=(id,ns)=>ns.length?ns.reduce((a,b)=>a+pos[b],0)/ns.length:pos[id];
+    for(let s=0;s<4;s++){for(let r=1;r<R;r++){rows[r].sort((a,b)=>bary(a,preds[a])-bary(b,preds[b]));rows[r].forEach((id,i)=>pos[id]=i)}
+      for(let r=R-2;r>=0;r--){rows[r].sort((a,b)=>bary(a,succs[a])-bary(b,succs[b]));rows[r].forEach((id,i)=>pos[id]=i)}}
+    // coordinates
+    const rowW=rows.map(r=>r.reduce((a,id)=>a+byId[id].w,0)+NS*(r.length-1));const W=Math.max(0,...rowW);
+    let y=0;const rowH=[];rows.forEach((r,ri)=>{const h=Math.max(0,...r.map(id=>byId[id].h));rowH.push(h);let x=(W-rowW[ri])/2;r.forEach(id=>{const n=byId[id];n.x=x+n.w/2;n.y=y+h/2;x+=n.w+NS});y+=h+RS});
+    return {width:W,height:Math.max(0,y-RS)};
+  }
+  // edge path (TB). Forward: bottom→top, bowed sideways by `off` so parallel/long edges stay apart.
+  // Back edge: arc around the right side, each one further out. Self-loop: small loop on the right.
+  function edgePath(a,b,back,W,off,backIdx){
+    if(a===b){const x=a.x+a.w/2,y=a.y;return {d:`M${x},${y-10} C${x+50},${y-30} ${x+50},${y+30} ${x},${y+10}`,lx:x+40,ly:y}}
+    if(!back){const x1=a.x,y1=a.y+a.h/2,x2=b.x,y2=b.y-b.h/2;const my=(y1+y2)/2,bx=(x1+x2)/2+off;return {d:`M${x1},${y1} C${bx},${my} ${bx},${my} ${x2},${y2}`,lx:bx,ly:my}}
+    const x1=a.x+a.w/2,y1=a.y,x2=b.x+b.w/2,y2=b.y;const xr=W+40+backIdx*26;
+    return {d:`M${x1},${y1} C${xr},${y1} ${xr},${y2} ${x2},${y2}`,lx:xr-6,ly:(y1+y2)/2}
+  }
+
+  // ---------- nav ----------
+  function renderNav(){
+    const n=$('#nav'); n.innerHTML='';
+    if(!wfDocs.length){n.innerHTML='<div class="empty">No workflows yet. Add one under <span class="mono">workflows/</span>, list it in <span class="mono">map.yaml</span>, run validate and build.</div>';return}
+    groups.forEach(g=>{
+      const h=document.createElement('div');h.className='g';h.textContent=g.name;n.appendChild(h);
+      (g.workflows||[]).forEach(id=>{const w=WF[id];if(!w)return;
+        const b=document.createElement('button');b.className='wf'+(state.mode==='wf'&&state.wf===id?' active':'');
+        b.innerHTML=`${esc(w.name)}<small>${(w.steps||[]).length} steps · ${esc(w.owner)}</small>`;
+        b.onclick=()=>openWf(id);n.appendChild(b)});
+    });
+  }
+
+  // ---------- canvas plumbing ----------
+  const svg=$('#canvas'),view=$('#view');let vb={x:0,y:0,w:1000,h:700};
+  function setVB(){svg.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`)}
+  function fit(gw,gh){const r=svg.getBoundingClientRect(),pad=70;if(!r.width||!r.height)return;const s=Math.min(r.width/(gw+pad*2),r.height/(gh+pad*2),1.3);vb={w:r.width/s,h:r.height/s,x:0,y:0};vb.x=-(vb.w-gw)/2;vb.y=-(vb.h-gh)/2;setVB()}
+  let drag=null;
+  svg.addEventListener('pointerdown',e=>{if(e.target.closest('.node'))return;drag={x:e.clientX,y:e.clientY,vx:vb.x,vy:vb.y};svg.setPointerCapture(e.pointerId)});
+  svg.addEventListener('pointermove',e=>{if(!drag)return;const r=svg.getBoundingClientRect(),k=vb.w/r.width;vb.x=drag.vx-(e.clientX-drag.x)*k;vb.y=drag.vy-(e.clientY-drag.y)*k;setVB()});
+  svg.addEventListener('pointerup',()=>drag=null);
+  svg.addEventListener('wheel',e=>{e.preventDefault();const r=svg.getBoundingClientRect();const mx=vb.x+(e.clientX-r.left)/r.width*vb.w,my=vb.y+(e.clientY-r.top)/r.height*vb.h;const f=Math.exp(e.deltaY*0.0015);vb={x:mx-(mx-vb.x)*f,y:my-(my-vb.y)*f,w:vb.w*f,h:vb.h*f};setVB()},{passive:false});
+  const NS='http://www.w3.org/2000/svg';const el=(t,a={})=>{const n=document.createElementNS(NS,t);for(const k in a)n.setAttribute(k,a[k]);return n};
+  let lastSize={w:0,h:0};
+
+  // ---------- single workflow ----------
+  function openWf(id,sel){state.mode='wf';state.wf=id;state.sel=sel||null;draw();}
+  function drawWf(w){
+    const steps=w.steps||[];
+    const nodes=steps.map(s=>{const lines=wrap(s.title,22);const isD=s.type==='decision';const tw=Math.max(...lines.map(l=>l.length));
+      const idw=s.type==='handoff'?(s.to.length+2)*6.6+16:0;return {id:s.id,s,lines,w:isD?Math.max(170,tw*8.5+70):Math.max(150,tw*7.4+40,idw),h:isD?76:(30+lines.length*16+(s.type==='handoff'?6:0))}});
+    // parallel branches to the same step are drawn once, conditions joined with ' / '
+    const edges=[],seenPair={};steps.forEach(s=>targets(s).forEach(t=>{const k=s.id+'>'+t.to;if(seenPair[k]){if(t.when)seenPair[k].label+=(seenPair[k].label?' / ':'')+t.when;return}edges.push(seenPair[k]={from:s.id,to:t.to,label:t.when||''})}));
+    const size=layout(nodes,edges,{});const N={};nodes.forEach(n=>N[n.id]=n);
+    view.innerHTML='';
+    // group parallel edges so each gets its own bow; long edges (rank span > 1) bow more
+    const rankOf={};nodes.forEach(n=>rankOf[n.id]=n.y);
+    let backIdx=0;
+    edges.forEach(e=>{const a=N[e.from],b=N[e.to];if(!a||!b)return;
+      const span=Math.abs(rankOf[b.id]-rankOf[a.id]);const off=span>a.h+b.h+80?60:0;
+      const p=edgePath(a,b,e.back,size.width,off,e.back?backIdx++:0);const ge=el('g',{class:'edge'});ge.appendChild(el('path',{d:p.d,'marker-end':'url(#arrow)'}));
+      if(e.label){const t=el('text',{x:p.lx+(e.back?0:8),y:p.ly-4,'text-anchor':e.back?'end':'start'});t.textContent=e.label;ge.appendChild(t)}view.appendChild(ge)});
+    const entry=steps[0]&&steps[0].id;
+    nodes.forEach(n=>{const s=n.s;const gn=el('g',{class:`node ${s.type}${s.id===entry?' entry':''}${state.sel===s.id?' selected':''}`,transform:`translate(${n.x-n.w/2},${n.y-n.h/2})`});
+      if(s.type==='decision')gn.appendChild(el('polygon',{points:`${n.w/2},0 ${n.w},${n.h/2} ${n.w/2},${n.h} 0,${n.h/2}`}));
+      else gn.appendChild(el('rect',{width:n.w,height:n.h,rx:s.type==='end'?n.h/2:6}));
+      const isD=s.type==='decision',base=isD?n.h/2:(n.h/2-(s.type==='end'?0:6));
+      n.lines.forEach((l,i)=>{const t=el('text',{x:n.w/2,y:base-((n.lines.length-1)*8)+i*16,'text-anchor':'middle','dominant-baseline':'middle'});t.textContent=l;gn.appendChild(t)});
+      if(s.type==='step'||s.type==='handoff'){const t=el('text',{class:'id',x:8,y:n.h-6});t.textContent=s.type==='handoff'?'→ '+s.to:s.id;gn.appendChild(t)}
+      gn.onclick=()=>{state.sel=s.id;draw(false)};view.appendChild(gn)});
+    lastSize={w:size.width+(backIdx?40+backIdx*26:0),h:size.height};
+    inspectStep(w,steps.find(s=>s.id===state.sel));
+    $('#crumb').innerHTML=`<b>${esc(w.name)}</b> &nbsp;·&nbsp; ${esc(w.owner)} &nbsp;·&nbsp; <span class="mono">workflows/${esc(w.id)}.yaml</span>`;
+  }
+
+  // ---------- map: groups as columns, workflows stacked, handoffs as curves ----------
+  function drawMap(){
+    const COLW=230,BOXH=58,GAPX=90,GAPY=22,PAD=18;
+    const N={};let x=0,maxH=0;const cols=[];
+    groups.forEach(g=>{const ids=(g.workflows||[]).filter(id=>WF[id]);let y=PAD+22;ids.forEach(id=>{N[id]={x:x+PAD,y,w:COLW-PAD*2,h:BOXH,cx:x+COLW/2,cy:y+BOXH/2};y+=BOXH+GAPY});const h=Math.max(y-GAPY+PAD,90);cols.push({g,x,h});maxH=Math.max(maxH,h);x+=COLW+GAPX});
+    const W=Math.max(0,x-GAPX);view.innerHTML='';
+    cols.forEach(c=>{const gc=el('g',{class:'cluster'});gc.appendChild(el('rect',{x:c.x,y:0,width:COLW,height:maxH}));const t=el('text',{x:c.x+PAD,y:20});t.textContent=c.g.name;gc.appendChild(t);view.appendChild(gc)});
+    const pairs={};wfDocs.forEach(w=>handoffsOf(w).forEach(h=>{const to=h.to.split('.')[0];if(!N[to]||!N[w.id])return;const k=w.id+'>'+to;pairs[k]=(pairs[k]||0)+1}));
+    Object.entries(pairs).forEach(([k,c])=>{const [ai,bi]=k.split('>'),a=N[ai],b=N[bi];const ge=el('g',{class:'edge hand'});let d,lx,ly;
+      if(Math.abs(a.cx-b.cx)<1){const xr=a.x+a.w+28;d=`M${a.x+a.w},${a.cy} C${xr},${a.cy} ${xr},${b.cy} ${b.x+b.w},${b.cy}`;lx=xr+4;ly=(a.cy+b.cy)/2}
+      else{const fwd=b.cx>a.cx;const x1=fwd?a.x+a.w:a.x,x2=fwd?b.x:b.x+b.w;const mx=(x1+x2)/2;d=`M${x1},${a.cy} C${mx},${a.cy} ${mx},${b.cy} ${x2},${b.cy}`;lx=mx;ly=(a.cy+b.cy)/2-6}
+      ge.appendChild(el('path',{d,'marker-end':'url(#arrowh)'}));if(c>1){const t=el('text',{x:lx,y:ly,'text-anchor':'middle'});t.textContent=c+' handoffs';ge.appendChild(t)}view.appendChild(ge)});
+    wfDocs.forEach(w=>{const n=N[w.id];if(!n)return;const gn=el('g',{class:'node wf'+(state.sel===w.id?' selected':''),transform:`translate(${n.x},${n.y})`});gn.appendChild(el('rect',{width:n.w,height:n.h,rx:8}));
+      const t=el('text',{class:'n',x:14,y:24});t.textContent=w.name;gn.appendChild(t);const s=el('text',{class:'sub',x:14,y:43});s.textContent=`${(w.steps||[]).length} steps · ${w.owner}`;gn.appendChild(s);
+      gn.onclick=()=>{state.sel=w.id;draw(false)};gn.ondblclick=()=>openWf(w.id);view.appendChild(gn)});
+    lastSize={w:W,h:maxH};
+    inspectWf(WF[state.sel]);
+    $('#crumb').innerHTML=`<b>All workflows</b> &nbsp;·&nbsp; ${wfDocs.length} workflow${wfDocs.length===1?'':'s'} in ${groups.length} group${groups.length===1?'':'s'}`;
+  }
+
+  // ---------- inspector ----------
+  function inspectStep(w,s){const a=$('#inspector');
+    if(!s){a.innerHTML=`<h2>${esc(w.name)}</h2><span class="tag step">workflow</span><dl><div><dt>Purpose</dt><dd>${esc(w.purpose)}</dd></div><div><dt>Trigger</dt><dd>${esc(w.trigger)}</dd></div><div><dt>Owner</dt><dd>${esc(w.owner)}</dd></div>${inboundList(w.id)}<div><dd class="muted">Click a step to see what happens there.</dd></div></dl>`;bind(a,w);return}
+    const outs=targets(s).map(t=>`<li><a data-step="${esc(t.to)}">${esc((w.steps.find(x=>x.id===t.to)||{}).title||t.to)}</a>${t.when?` <span class="muted">— when ${esc(t.when)}</span>`:''}</li>`).join('');
+    const ho=s.type==='handoff'?`<div><dt>Hands off to</dt><dd><a data-wf="${esc(s.to.split('.')[0])}" data-step="${esc(s.to.split('.')[1])}">${esc(s.to)}</a></dd></div>`:'';
+    a.innerHTML=`<h2>${esc(s.title)}</h2><span class="tag ${s.type}">${s.type}</span><dl>
+      <div><dt>What happens</dt><dd>${esc(s.what||'—')}</dd></div>
+      ${s.owner?`<div><dt>Owner</dt><dd>${esc(s.owner)}</dd></div>`:''}
+      ${s.notes?`<div><dt>Notes</dt><dd class="notes">${esc(s.notes)}</dd></div>`:''}
+      ${ho}
+      ${outs?`<div><dt>Then</dt><dd><ul>${outs}</ul></dd></div>`:''}
+      <div><dt>Id</dt><dd class="mono muted">${esc(w.id)}.${esc(s.id)}</dd></div></dl>`;
+    bind(a,w);
+  }
+  function bind(a,w){a.querySelectorAll('a[data-step]').forEach(l=>l.onclick=()=>openWf(l.dataset.wf||(w&&w.id),l.dataset.step));a.querySelectorAll('a[data-open]').forEach(l=>l.onclick=()=>openWf(l.dataset.open))}
+  function inboundList(wid){const inb=inbound(wid);if(!inb.length)return'';return`<div><dt>Receives handoffs from</dt><dd><ul>${inb.map(i=>`<li><a data-wf="${esc(i.from.id)}" data-step="${esc(i.step.id)}">${esc(i.from.name)}</a> <span class="muted">· ${esc(i.step.title)}</span></li>`).join('')}</ul></dd></div>`}
+  function inspectWf(w){const a=$('#inspector');
+    if(!w){a.innerHTML=wfDocs.length?`<h2>Map</h2><dl><div><dd class="muted">Each column is a group, each box one workflow; dashed arrows are the handoffs found in the files. Click a workflow for its summary, double-click to open it.</dd></div></dl>`:`<h2>Nothing here yet</h2><dl><div><dd class="muted">The map fills in as workflow files are added.</dd></div></dl>`;return}
+    const outs=handoffsOf(w).map(h=>`<li><a data-wf="${esc(h.to.split('.')[0])}" data-step="${esc(h.to.split('.')[1])}">${esc((WF[h.to.split('.')[0]]||{}).name||h.to)}</a> <span class="muted">· ${esc(h.title)}</span></li>`).join('');
+    a.innerHTML=`<h2>${esc(w.name)}</h2><span class="tag step">workflow</span><dl><div><dt>Purpose</dt><dd>${esc(w.purpose)}</dd></div><div><dt>Trigger</dt><dd>${esc(w.trigger)}</dd></div><div><dt>Owner</dt><dd>${esc(w.owner)}</dd></div>
+      ${outs?`<div><dt>Hands off to</dt><dd><ul>${outs}</ul></dd></div>`:''}${inboundList(w.id)}
+      <div><dd><a data-open="${esc(w.id)}">Open workflow →</a></dd></div></dl>`;
+    bind(a,w);
+  }
+
+  // ---------- draw ----------
+  function draw(refit=true){
+    renderNav();
+    $('#legend').hidden=!(state.mode==='wf');
+    const hint=$('#hint');
+    if(!wfDocs.length){view.innerHTML='';hint.hidden=false;hint.innerHTML='<div><b>No workflows yet.</b><br>The map and the workflow views appear once the first file lands in <span class="mono">workflows/</span>.</div>';inspectWf(null);$('#crumb').innerHTML='<b>All workflows</b> · 0';return}
+    hint.hidden=true;
+    if(state.mode==='wf'&&WF[state.wf])drawWf(WF[state.wf]);else{state.mode='map';drawMap()}
+    if(refit)fit(lastSize.w,lastSize.h);
+  }
+  const defs=el('defs');defs.innerHTML='<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink-3)"/></marker><marker id="arrowh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--handoff)"/></marker>';svg.insertBefore(defs,view);
+  $('#btnMap').onclick=()=>{state.mode='map';state.sel=null;draw()};
+  $('#btnFit').onclick=()=>fit(lastSize.w,lastSize.h);
+  window.addEventListener('resize',()=>fit(lastSize.w,lastSize.h));
+  draw();
+})();
+</script>

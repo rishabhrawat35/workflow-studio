@@ -1,0 +1,3 @@
+# Workflow of workflows. See SCHEMA.md.
+# Every file in workflows/ must be listed in exactly one group.
+groups: []
