@@ -14,7 +14,7 @@ Usage (from the product repository root, with framework/ copied in):
       command is a `next` on a record already at that step; `start` refuses it.
   orchestrate.py next <record.md>
       what happens now: step, mode, role, inputs, framing, legal exits, last edges
-  orchestrate.py advance <record.md> --to <step|index|prefix> [--when "<condition|index>"]
+  orchestrate.py advance <record.md> --to <step|bare step id|index|prefix> [--when "<condition|index>"]
                         [--answer "<PM's answer>"] [--lane small|full]
       move the record along one edge. Refuses: an exit not in the YAML; a
       decision without its condition; a mismatched condition; leaving a PM
@@ -48,6 +48,10 @@ ENTRY_STEPS = {"define.intake"}
 MAX_FAILED = 3
 
 
+class Refused(Exception):
+    """A refusal: printed as `refused: …`, exit 1."""
+
+
 def load_yaml(p: Path):
     with p.open(encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
@@ -55,6 +59,9 @@ def load_yaml(p: Path):
 
 def load_system():
     workflows = {}
+    if not list(WF_DIR.glob("*.yaml")):
+        raise Refused(f"no workflow files in {WF_DIR.relative_to(ROOT) if WF_DIR.is_relative_to(ROOT) else WF_DIR}/; from the workflow-studio checkout run "
+                      "`cp -r /path/to/workflow-studio/workflows framework/` so they sit in framework/workflows/")
     for p in sorted(WF_DIR.glob("*.yaml")):
         d = load_yaml(p)
         workflows[d["id"]] = d
@@ -125,7 +132,8 @@ def check(workflows, roles, commands) -> list[str]:
         if cfg.get("role") not in roles["roles"]:
             problems.append(f"roles.yaml: {ref} names unknown role {cfg.get('role')}")
     for name, c in commands.items():
-        if c.get("stub"):
+        if "enters" not in c:
+            problems.append(f"commands.yaml: {name} has no `enters` step")
             continue
         if c["enters"] not in all_steps:
             problems.append(f"commands.yaml: {name} enters unknown step {c['enters']}")
@@ -152,11 +160,21 @@ def check(workflows, roles, commands) -> list[str]:
 
 # ---------------------------------------------------------------- records
 def read_record(path: Path):
+    if not path.exists():
+        raise Refused(f"no record at {path}")
     text = path.read_text(encoding="utf-8")
     m = FM.match(text)
     if not m:
         return {}, text
-    return yaml.safe_load(m.group(1)) or {}, (m.group(2) or "")
+    meta = yaml.safe_load(m.group(1)) or {}
+    if not isinstance(meta, dict):
+        raise Refused("record front matter must be a mapping")
+    for k in ("failed_passes", "rerun_count"):
+        if k in meta and not (isinstance(meta[k], int) and not isinstance(meta[k], bool)):
+            raise Refused(f"record field `{k}` must be an integer, not {meta[k]!r}")
+    if "history" in meta and (not isinstance(meta["history"], list) or not all(isinstance(h, dict) for h in meta["history"])):
+        raise Refused("record field `history` must be a list of edges (mappings)")
+    return meta, (m.group(2) or "")
 
 
 def write_record(path: Path, meta: dict, body: str):
@@ -196,10 +214,13 @@ def set_state(meta, roles, workflows, step, lane=None):
 
 
 def resolve_target(ex, to):
-    """--to may be a full ref, a 1-based index, or a unique prefix of the target."""
+    """--to may be a full ref, its bare step id, a 1-based index, or a unique prefix of the target."""
+    to = to.strip()
+    if not to:
+        return None  # an empty --to would prefix-match a single exit
     if to.isdigit() and 1 <= int(to) <= len(ex):
         return ex[int(to) - 1][0]
-    hits = [t for t, _ in ex if t == to] or [t for t, _ in ex if t.startswith(to)]
+    hits = [t for t, _ in ex if t == to] or [t for t, _ in ex if t.partition(".")[2] == to] or [t for t, _ in ex if t.startswith(to)]
     return hits[0] if len(hits) == 1 else None
 
 
@@ -333,9 +354,6 @@ def cmd_start(args, workflows, roles, commands):
     if not c:
         print(f"unknown command {args.command}; known: {', '.join(commands)}")
         return 1
-    if c.get("stub"):
-        print(f"{args.command}: {c['does']}")
-        return 1
     meta, body = read_record(path) if path.exists() else ({}, f"# {path.stem}\n\n## Request\n\n")
     if not c.get("entry"):
         if meta.get("step") == c["enters"]:
@@ -349,6 +367,7 @@ def cmd_start(args, workflows, roles, commands):
     meta["command"] = args.command
     meta["history"] = []
     set_state(meta, roles, workflows, c["enters"], lane=args.lane or "full")
+    path.parent.mkdir(parents=True, exist_ok=True)  # changes/ is the documented location; create it on the first record
     write_record(path, meta, body)
     print(f"started at {c['enters']} via {args.command}")
     return cmd_next(argparse.Namespace(record=args.record), workflows, roles, commands)
@@ -392,8 +411,7 @@ def main() -> int:
                 print("  -", x)
             return 1
         n = sum(len(w["steps"]) for w in workflows.values())
-        live = [k for k, v in commands.items() if not v.get("stub")]
-        print(f"CLOSED — {n} steps, every one mapped to a role and mode; {len(live)} commands, every one entering a real non-routing step")
+        print(f"CLOSED — {n} steps, every one mapped to a role and mode; {len(commands)} commands, every one entering a real non-routing step")
         return 0
     if problems:
         print("refused: the system is not closed; run `check`")
@@ -404,5 +422,8 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
+    except Refused as e:
+        print(f"refused: {e}")
+        sys.exit(1)
     except BrokenPipeError:
         sys.exit(0)

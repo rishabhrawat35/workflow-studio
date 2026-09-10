@@ -1,5 +1,5 @@
 <title>Workflow Studio</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<!-- No external requests: the page must render offline and unchanged. IBM Plex is used only if installed locally. -->
 <style>
 :root{
   --paper:#F6F7F5; --panel:#FFFFFF; --ink:#1B2430; --ink-2:#4B5563; --ink-3:#8A94A3;
@@ -101,6 +101,18 @@ aside ul{margin:0;padding-left:18px} aside li{margin:2px 0}
 aside a{color:var(--accent);cursor:pointer;text-decoration:underline dotted}
 aside .muted{color:var(--ink-3)}
 @media (prefers-reduced-motion:no-preference){ .node rect,.node polygon{transition:stroke-width .12s} }
+/* narrow screens: stack header / workflow strip / canvas / inspector instead of three columns */
+@media (max-width:900px){
+  body{grid-template-columns:1fr;grid-template-rows:auto auto 1fr minmax(0,38vh)}
+  header{grid-column:1;flex-wrap:wrap;gap:8px 12px;padding:8px 16px;min-height:48px}
+  header .crumb{flex-basis:100%;order:3;font-size:12px}
+  nav{border-right:0;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;gap:0 4px;padding:6px 8px}
+  nav .g{padding:4px 8px;flex-basis:100%}
+  .wf{width:auto;padding:4px 8px;border-radius:6px} .wf small{display:inline;margin-left:6px}
+  main{min-height:280px}
+  .legend{gap:8px;flex-wrap:wrap;right:12px;font-size:11px}
+  aside{border-left:0;border-top:1px solid var(--line);padding:12px 16px}
+}
 </style>
 
 <header>
@@ -142,7 +154,7 @@ aside .muted{color:var(--ink-3)}
   // ---------- layered layout (top-to-bottom) ----------
   // nodes: [{id,w,h}], edges: [{from,to,label}] -> {nodes with x,y (centers), edges with back:bool, width, height}
   function layout(nodes,edges,opt){
-    const NS=opt.nodesep||36, RS=opt.ranksep||64;
+    const NS=opt.nodesep||36, RS=opt.ranksep||76;
     const byId={};nodes.forEach(n=>byId[n.id]=n);
     const out={};nodes.forEach(n=>out[n.id]=[]);edges.forEach(e=>{if(byId[e.from]&&byId[e.to])out[e.from].push(e)});
     // back edges via DFS from the first node, then from any unvisited
@@ -173,7 +185,10 @@ aside .muted{color:var(--ink-3)}
   // left margin; loops back up: routed up the right margin. Each side edge gets its own lane.
   function edgePath(a,b,kind,W,lane){
     if(a===b){const x=a.x+a.w/2,y=a.y;return {d:`M${x},${y-10} C${x+50},${y-30} ${x+50},${y+30} ${x},${y+10}`,lx:x+40,ly:y,anchor:'start'}}
-    if(kind==='direct'){const x1=a.x,y1=a.y+a.h/2,x2=b.x,y2=b.y-b.h/2;const my=(y1+y2)/2;return {d:`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`,lx:x2+8,ly:y2-14,anchor:'start'}}
+    if(kind==='direct'){const x1=a.x,y1=a.y+a.h/2,x2=b.x,y2=b.y-b.h/2;const my=(y1+y2)/2;
+      // label beside the curve's midpoint, on the outer side of the fan, so edges leaving one decision
+      // (or entering one step) do not print on top of each other or over the neighbouring node
+      const px=(x1+x2)/2,py=(y1+y2)/2,left=x2<x1;return {d:`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`,lx:left?px-6:px+6,ly:py+4,anchor:left?'end':'start'}}
     const r=10,yt=b.y-b.h/2,yin=yt-22;   // side rails come back in above the target and drop into its top
     if(kind==='jump'){const xl=-40-lane*26;const x1=a.x-a.w/2,y1=a.y;
       return {d:`M${x1},${y1} H${xl+r} Q${xl},${y1} ${xl},${y1+r} V${yin-r} Q${xl},${yin} ${xl+r},${yin} H${b.x-r} Q${b.x},${yin} ${b.x},${yin+r} V${yt}`,lx:xl-6,ly:(y1+yin)/2,anchor:'end'}}
@@ -197,7 +212,9 @@ aside .muted{color:var(--ink-3)}
   // ---------- canvas plumbing ----------
   const svg=$('#canvas'),view=$('#view');let vb={x:0,y:0,w:1000,h:700};
   function setVB(){svg.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`)}
-  function fit(gw,gh){const r=svg.getBoundingClientRect(),pad=70;if(!r.width||!r.height)return;const s=Math.min(r.width/(gw+pad*2),r.height/(gh+pad*2),1.3);vb={w:r.width/s,h:r.height/s,x:0,y:0};vb.x=-(vb.w-gw)/2;vb.y=-(vb.h-gh)/2;setVB()}
+  function fit(gw,gh){const r=svg.getBoundingClientRect(),pad=70;if(!r.width||!r.height)return;
+    const lg=$('#legend'),lgH=lg&&!lg.hidden?lg.getBoundingClientRect().height+24:0;   // the legend overlays the bottom-left: keep the drawing above it
+    const s=Math.min(r.width/(gw+pad*2),(r.height-lgH)/(gh+pad*2),1.3);vb={w:r.width/s,h:r.height/s,x:0,y:0};vb.x=-(vb.w-gw)/2;vb.y=-((r.height-lgH)/s-gh)/2;setVB()}
   let drag=null;
   svg.addEventListener('pointerdown',e=>{if(e.target.closest('.node'))return;drag={x:e.clientX,y:e.clientY,vx:vb.x,vy:vb.y};svg.setPointerCapture(e.pointerId)});
   svg.addEventListener('pointermove',e=>{if(!drag)return;const r=svg.getBoundingClientRect(),k=vb.w/r.width;vb.x=drag.vx-(e.clientX-drag.x)*k;vb.y=drag.vy-(e.clientY-drag.y)*k;setVB()});
@@ -207,24 +224,39 @@ aside .muted{color:var(--ink-3)}
   let lastSize={w:0,h:0};
 
   // ---------- single workflow ----------
+  const badgePairs=(s,entry)=>{const b=[];if(s.id===entry)b.push(['entry','ENTRY']);if(s.type==='end'||s.type==='handoff')b.push(['exit',s.type==='handoff'?'EXIT → '+s.to.split('.')[0].toUpperCase():'EXIT']);if(s.input)b.push(['pm','PM INPUT']);if(s.output)b.push(['out','OUTPUT']);return b};
+  const badgeLabels=(s,entry)=>badgePairs(s,entry).map(x=>x[1]);
   function openWf(id,sel){state.mode='wf';state.wf=id;state.sel=sel||null;draw();}
   function drawWf(w){
     const steps=w.steps||[];
     const nodes=steps.map(s=>{const lines=wrap(s.title,22);const isD=s.type==='decision';const tw=Math.max(...lines.map(l=>l.length));
-      const idw=s.type==='handoff'?(s.to.length+2)*6.6+16:0;return {id:s.id,s,lines,sink:s.type==='end',w:isD?Math.max(170,tw*8.5+70):Math.max(150,tw*7.4+40,idw),h:isD?76:(30+lines.length*16+(s.type==='handoff'?6:0))}});
+      const idw=s.type==='handoff'?(s.to.length+2)*6.6+16:0;
+      // the badge row (ENTRY / EXIT → X / PM INPUT / OUTPUT) must fit inside the node's width
+      const bl=badgeLabels(s,steps[0]&&steps[0].id),bw=bl.reduce((a,l)=>a+l.length*6.2+14,0)+8;
+      return {id:s.id,s,lines,sink:s.type==='end',w:isD?Math.max(170,tw*8.5+70,bw):Math.max(150,tw*7.4+40,idw,bw),h:isD?76:(30+lines.length*16+(s.type==='handoff'?6:0))}});
     // parallel branches to the same step are drawn once, conditions joined with ' / '
     const edges=[],seenPair={};steps.forEach(s=>targets(s).forEach(t=>{const k=s.id+'>'+t.to;if(seenPair[k]){if(t.when)seenPair[k].label+=(seenPair[k].label?' / ':'')+t.when;return}edges.push(seenPair[k]={from:s.id,to:t.to,label:t.when||''})}));
-    const size=layout(nodes,edges,{});const N={};nodes.forEach(n=>N[n.id]=n);
+    let size=layout(nodes,edges,{});const N={};nodes.forEach(n=>N[n.id]=n);
+    // a band between two ranks holds one 14px row per label that must not overlap; when many labelled
+    // edges fan out between the same two ranks (two decisions side by side), open the rank gap to fit them
+    {const per={};edges.forEach(e=>{const a=N[e.from],b=N[e.to];if(a&&b&&e.label&&b.rank-a.rank===1)per[a.rank]=(per[a.rank]||0)+1});
+      const most=Math.max(0,...Object.values(per));if(most>3)size=layout(nodes,edges,{ranksep:76+(most-3)*14})}
     view.innerHTML='';
     // labels of side rails sit outside the outermost rail on that side
     const kindOf=e=>{const a=N[e.from],b=N[e.to];return (!a||!b)?null:e.back?'back':(b.rank-a.rank>1?'jump':'direct')};
     const nJ=edges.filter(e=>kindOf(e)==='jump').length,nB=edges.filter(e=>kindOf(e)==='back').length;
-    let jumps=0,backs=0;
+    let jumps=0,backs=0;const labels=[];
     edges.forEach(e=>{const a=N[e.from],b=N[e.to];const kind=kindOf(e);if(!kind)return;
       const p=edgePath(a,b,kind,size.width,kind==='jump'?jumps++:kind==='back'?backs++:0);
       if(kind==='jump')p.lx=-40-(nJ-1)*26-8;if(kind==='back')p.lx=size.width+40+(nB-1)*26+8;
       const ge=el('g',{class:'edge'});ge.appendChild(el('path',{d:p.d,'marker-end':'url(#arrow)'}));
-      if(e.label){const t=el('text',{x:p.lx,y:p.ly,'text-anchor':p.anchor});t.textContent=e.label.length>44?e.label.slice(0,42).trimEnd()+'…':e.label;const tt=el('title');tt.textContent=e.label;t.appendChild(tt);ge.appendChild(t)}view.appendChild(ge)});
+      if(e.label){const t=el('text',{x:p.lx,y:p.ly,'text-anchor':p.anchor});t.textContent=e.label.length>44?e.label.slice(0,42).trimEnd()+'…':e.label;const tt=el('title');tt.textContent=e.label;t.appendChild(tt);ge.appendChild(t);const dir=kind==='direct';labels.push({t,x:p.lx,y:p.ly,w:0,anchor:p.anchor,minY:dir?a.y+a.h/2+8:-1e9,maxY:dir?b.y-b.h/2-22:1e9})}view.appendChild(ge)});
+    // labels that would still print over one another are pushed down until they clear (14px per line)
+    // (a label stays between its own source and target: if there is no room below, the other one moves up)
+    labels.forEach(l=>{try{l.w=l.t.getComputedTextLength()+8}catch(_){l.w=l.t.textContent.length*6.8+8}});
+    labels.sort((a,b)=>a.y-b.y);for(let pass=0;pass<4;pass++)for(let i=0;i<labels.length;i++)for(let j=i+1;j<labels.length;j++){const a=labels[i],b=labels[j];
+      const ax0=a.anchor==='end'?a.x-a.w:a.x,bx0=b.anchor==='end'?b.x-b.w:b.x;if(ax0<bx0+b.w&&bx0<ax0+a.w&&Math.abs(a.y-b.y)<14){
+        if(a.y+14<=b.maxY){b.y=a.y+14;b.t.setAttribute('y',b.y)}else if(b.y-14>=a.minY){a.y=b.y-14;a.t.setAttribute('y',a.y)}}}
     const entry=steps[0]&&steps[0].id;
     nodes.forEach(n=>{const s=n.s;const gn=el('g',{class:`node ${s.type}${s.id===entry?' entry':''}${state.sel===s.id?' selected':''}`,transform:`translate(${n.x-n.w/2},${n.y-n.h/2})`});
       if(s.type==='decision')gn.appendChild(el('polygon',{points:`${n.w/2},0 ${n.w},${n.h/2} ${n.w/2},${n.h} 0,${n.h/2}`}));
@@ -233,7 +265,7 @@ aside .muted{color:var(--ink-3)}
       n.lines.forEach((l,i)=>{const t=el('text',{x:n.w/2,y:base-((n.lines.length-1)*8)+i*16,'text-anchor':'middle','dominant-baseline':'middle'});t.textContent=l;gn.appendChild(t)});
       if(s.type==='step'||s.type==='handoff'){const t=el('text',{class:'id',x:8,y:n.h-6});t.textContent=s.type==='handoff'?'→ '+s.to:s.id;gn.appendChild(t)}
       const pmOwned=(s.owner||w.owner)==='PM';if(pmOwned)gn.classList.add('pmowned');
-      const badges=[];if(s.id===entry)badges.push(['entry','ENTRY']);if(s.type==='end'||s.type==='handoff')badges.push(['exit',s.type==='handoff'?'EXIT → '+s.to.split('.')[0].toUpperCase():'EXIT']);if(s.input)badges.push(['pm','PM INPUT']);if(s.output)badges.push(['out','OUTPUT']);
+      const badges=badgePairs(s,entry);
       let bx=s.type==='decision'?n.w/2-badges.reduce((a,b)=>a+b[1].length*6.2+14,0)/2:6;badges.forEach(([c,l])=>{const bw=l.length*6.2+10;const g=el('g',{class:'badge '+c,transform:`translate(${bx},${-9})`});g.appendChild(el('rect',{width:bw,height:14}));const t=el('text',{x:bw/2,y:7.5});t.textContent=l;g.appendChild(t);gn.appendChild(g);bx+=bw+4});
       gn.onclick=()=>{state.sel=s.id;draw(false)};view.appendChild(gn)});
     const margL=jumps?40+jumps*26+200:0,margR=backs?40+backs*26+200:0;

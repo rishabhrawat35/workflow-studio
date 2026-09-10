@@ -80,8 +80,12 @@ steps:
 ### `next` targets
 
 Either a plain step id, or `{to: <step-id>, when: <condition>}`.
-`decision` steps must have at least two targets and every target needs a `when`.
-`step` and `handoff` normally have exactly one target.
+`decision` steps must have at least two targets and every target needs a `when`;
+two exits of one decision may not share the same condition (the route would be ambiguous).
+`step` and `handoff` normally have exactly one target. The same target listed twice
+with the same condition is an error. Any string field that is present must be
+non-blank; a YAML key given twice in one mapping is an error (YAML would silently
+keep the last one).
 
 ### Graph rules (validator-enforced)
 
@@ -108,7 +112,7 @@ groups:
     workflows: [member-onboarding]
 ```
 
-Rules: `entry` names an existing step that carries `input` and is the first step of its workflow; `exit` names an existing `end` step; group `id` is kebab-case; every file in `workflows/` appears in exactly one group; every id listed exists as a file. The map draws the PM feeding `entry` and the result leaving at `exit`.
+Rules: `entry` names an existing step that carries `input` and is the first step of its workflow; `exit` names an existing `end` step; group `id` is kebab-case and unique; every file in `workflows/` appears in exactly one group; every id listed exists as a file; no keys other than `entry`, `exit`, `groups` (and `id`, `name`, `workflows` in a group). The map draws the PM feeding `entry` and the result leaving at `exit`.
 The map view is drawn from this grouping plus the handoffs found in the workflow files.
 
 ## What is deliberately not in the schema

@@ -5,6 +5,7 @@ Every step gets: what it is, who owns it, what comes in (previous steps and
 incoming handoffs), what goes out (next steps with conditions), and notes.
 Nothing here is written by hand; edit the YAML and rerun.
 """
+import subprocess
 import sys
 from pathlib import Path
 
@@ -22,6 +23,12 @@ def targets(step):
 
 
 def main() -> int:
+    # the generator assumes valid files; refuse (instead of crashing) on anything the validator rejects
+    v = subprocess.run([sys.executable, str(ROOT / "tools" / "validate.py")], capture_output=True, text=True)
+    if v.returncode != 0:
+        print(v.stdout.rstrip())
+        print("docs aborted: validation failed")
+        return 1
     wfs = {}
     for p in sorted((ROOT / "workflows").glob("*.yaml")):
         d = yaml.safe_load(p.read_text(encoding="utf-8"))

@@ -20,8 +20,11 @@ LOGIC = ROOT / "logic"
 OUT = LOGIC / "INDEX.md"
 
 
+ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
 def parse(path: Path):
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig", errors="replace")
     title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), path.stem)
     status = re.search(r"^Status:\s*(.+)$", text, re.M)
     retired = status if status and status.group(1).strip().lower().startswith("retired") else None
@@ -63,8 +66,9 @@ def main() -> int:
             status = "retired with parent"
         flag = f" — {status}" if status else " — **no Status line (finding)**"
         dup = f" — **duplicate id, also at {seen[node_id]}**" if node_id in seen else ""
+        bad = "" if ID_RE.match(node_id) else " — **id is not kebab-case (finding)**"
         seen.setdefault(node_id, str(rel))
-        lines.append(f"{'  ' * depth}- **{title}** `{node_id}`{flag}{dup}")
+        lines.append(f"{'  ' * depth}- **{title}** `{node_id}`{flag}{dup}{bad}")
         for c in crit:
             lines.append(f"{'  ' * (depth + 1)}- · {c}")
     OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")

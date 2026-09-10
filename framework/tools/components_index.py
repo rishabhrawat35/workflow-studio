@@ -55,7 +55,7 @@ def main() -> int:
         for p in sorted(node_files, key=lambda x: len(x.parts)):
             known_nodes.add(p.stem)
             rel = str(p.relative_to(LOGIC).with_suffix(""))
-            own = re.search(r"^Status:\s*retired\b", p.read_text(encoding="utf-8", errors="ignore"), re.M)
+            own = re.search(r"^Status:\s*retired\b", p.read_text(encoding="utf-8-sig", errors="ignore"), re.M)
             if own or any(rel.startswith(d + "/") for d in retired_dirs):
                 retired.add(p.stem)
                 retired_dirs.add(rel)

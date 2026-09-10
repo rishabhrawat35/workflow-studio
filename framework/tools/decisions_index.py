@@ -81,7 +81,12 @@ def main() -> int:
             findings.append(f"{p.name}: filename must be D-<nnnn>-<slug>.md")
             continue
         did = fm.group(1)
-        m = FM.match(p.read_text(encoding="utf-8"))
+        try:
+            text = p.read_text(encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            findings.append(f"{p.name}: not valid UTF-8 text")
+            continue
+        m = FM.match(text.replace("\r\n", "\n"))
         if not m:
             findings.append(f"{p.name}: no YAML front matter")
             continue
@@ -90,6 +95,9 @@ def main() -> int:
         except yaml.YAMLError as e:
             findings.append(f"{p.name}: front matter parse error: {e}")
             continue
+        if not isinstance(meta, dict):
+            findings.append(f"{p.name}: front matter must be a mapping of fields")
+            continue
         body = (m.group(2) or "").strip()
         title = next((l[2:].strip() for l in body.splitlines() if l.startswith("# ")), "")
         for k in REQUIRED:
@@ -97,6 +105,14 @@ def main() -> int:
                 findings.append(f"{p.name}: missing `{k}`")
         for k in set(meta) - ALLOWED:
             findings.append(f"{p.name}: unknown field `{k}`")
+        for k in ("nodes", "resources", "links"):
+            if k in meta and not (isinstance(meta[k], list) and all(isinstance(x, str) for x in meta[k])):
+                findings.append(f"{p.name}: `{k}` must be a list of strings, e.g. [refund-request]")
+                meta[k] = []
+        for k in ("category", "made_by", "at_step", "region", "record"):
+            if k in meta and not isinstance(meta[k], str):
+                findings.append(f"{p.name}: `{k}` must be a string")
+                meta[k] = str(meta[k])
         when = parse_when(meta.get("made_at")) if meta.get("made_at") else None
         if meta.get("made_at") and when is None:
             findings.append(f"{p.name}: made_at must be a quoted ISO timestamp with time and offset, e.g. \"2026-09-09T14:32+05:30\"")

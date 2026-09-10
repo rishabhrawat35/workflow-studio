@@ -34,13 +34,14 @@ def split(text):
 
 
 def skill_md(name, meta, body, args_token):
-    desc = meta.get("description", name).replace('"', "'")
+    desc = meta.get("description", name).replace("\\", "\\\\").replace('"', '\\"')  # a YAML double-quoted string: escape, do not alter
     return f"---\nname: {name.replace('.', '-')}\ndescription: \"{desc}\"\n---\n" + body.replace("$ARGUMENTS", args_token)
 
 
 def toml(name, meta, body):
-    desc = meta.get("description", name).replace('"', "'")
-    b = body.replace("$ARGUMENTS", "{{args}}").replace('"""', "'''")
+    # basic strings: a backslash is an escape, so it must be doubled or the file is invalid TOML
+    desc = meta.get("description", name).replace("\\", "\\\\").replace('"', '\\"')  # TOML basic strings: escape, do not alter
+    b = body.replace("$ARGUMENTS", "{{args}}").replace("\\", "\\\\").replace('"""', '""\\"')
     return f'description = "{desc}"\nprompt = """\n{b}\n"""\n'
 
 

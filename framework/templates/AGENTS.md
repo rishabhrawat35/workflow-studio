@@ -16,7 +16,7 @@ files cannot: where things are here, the exact commands, and how to resume.
 - Regenerate indexes: `python3 framework/tools/logic_index.py && python3 framework/tools/components_index.py && python3 framework/tools/decisions_index.py`
 
 ## Entry and resume
-- Every PM message is `define.intake`, including "just fix the typo" and a new request hidden in a gate answer. Slash commands: `/speckit.specify`, `/speckit.plan`, `/speckit.implement`, `/speckit.accept`, `/speckit.status`, `/speckit.why` (full list: `framework/orchestration/commands.yaml`).
+- Every PM message is `define.intake`, including "just fix the typo" and a new request hidden in a gate answer. Slash commands: `/speckit-specify`, `/speckit-plan`, `/speckit-implement`, `/speckit-accept`, `/speckit-status`, `/speckit-why` (Gemini: `/speckit.<name>`) (full list: `framework/orchestration/commands.yaml`).
 - Before anything: `python3 framework/tools/orchestrate.py check` must print CLOSED.
 - To act: `python3 framework/tools/orchestrate.py next <record>` tells you the step, your role, your inputs and the legal exits. Do that step; move with `advance --to <exit> --when "<condition>"`. Never pick a step yourself.
 - To resume: `next` on the record in flight (see `changes/QUEUE.md`). Never start from scratch.

@@ -2,8 +2,8 @@
 # move to Spec Kit (or back) keeps the PM's muscle memory (Spec Kit >= 1.0 invokes
 # them as /speckit-<name>; the installer writes that layout). `entry: true`
 # commands create a record (all at define.intake, the one door); every other
-# command continues a record already at `enters`. `stub: true` commands only
-# explain that they are not part of this framework.
+# command continues a record already at `enters`. Two commands wrap a tool instead of a step:
+# taskstoissues (deliver.execute or later) and git.commit (deliver.commit only); each checks the record's step itself.
 commands:
   speckit.constitution:
     enters: define.intake
@@ -106,15 +106,16 @@ commands:
     does: 'stop a request: a queue instruction applied at answer, or a stop at the current gate'
     entry: true
   speckit.taskstoissues:
-    enters: none
+    enters: deliver.execute
     speckit_equivalent: speckit.taskstoissues
     entry: false
-    stub: true
-    does: 'not part of this framework: the change record with its task list is the issue; nothing is exported'
+    does: 'mirror the record''s task list as GitHub issues (framework/tools/tasks_to_issues.py): one issue per task,
+      the number written back onto the task line; allowed at deliver.execute or later, never before the plan is approved;
+      moves nothing, the record stays the source of truth'
   speckit.git.commit:
-    enters: none
+    enters: deliver.commit
     speckit_equivalent: speckit.git.commit
     entry: false
-    stub: true
-    does: 'not part of this framework: the commit happens at deliver.commit, after the PM accepts; nothing is committed
-      by hand'
+    does: 'the one code commit of deliver.commit (framework/tools/commit.py): regenerates the indexes, stages the code,
+      tests, nodes, decisions and record of this delivery only, commits, and advances the record to done; refuses any
+      record not at deliver.commit, so nothing is committed before the PM accepts'

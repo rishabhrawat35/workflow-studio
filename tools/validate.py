@@ -19,6 +19,8 @@ STEP_TYPES = {"step", "decision", "handoff", "end"}
 WF_REQUIRED = ["id", "name", "owner", "purpose", "trigger", "steps"]
 STEP_ALLOWED = {"id", "type", "title", "what", "notes", "next", "to", "owner", "input", "output"}
 WF_ALLOWED = set(WF_REQUIRED)
+MAP_ALLOWED = {"entry", "exit", "groups"}
+GROUP_ALLOWED = {"id", "name", "workflows"}
 
 errors: list[str] = []
 
@@ -30,25 +32,58 @@ def err(where: str, msg: str) -> None:
 PARSE_ERROR = object()
 
 
+class StrictLoader(yaml.SafeLoader):
+    """SafeLoader that rejects duplicate mapping keys (PyYAML silently keeps the last one)."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for k_node, _ in node.value:
+            if k_node.tag == "tag:yaml.org,2002:merge":
+                continue  # `<<: *anchor` is expanded by the parent constructor; an explicit key may override a merged one
+            k = self.construct_object(k_node, deep=deep)
+            try:
+                dup = k in seen
+            except TypeError:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping", node.start_mark, f"found unhashable key {k!r}", k_node.start_mark) from None
+            if dup:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping", node.start_mark, f"duplicate key {k!r}", k_node.start_mark)
+            seen.add(k)
+        return super().construct_mapping(node, deep)
+
+
 def load_yaml(path: Path):
     """Return parsed content ({} for an empty file) or PARSE_ERROR."""
     try:
-        with path.open(encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+        with path.open(encoding="utf-8-sig") as f:
+            data = yaml.load(f, Loader=StrictLoader)
         return {} if data is None else data
     except yaml.YAMLError as e:
         err(str(path.relative_to(ROOT)), f"YAML parse error: {e}")
         return PARSE_ERROR
+    except UnicodeDecodeError as e:
+        err(str(path.relative_to(ROOT)), f"not valid UTF-8 text: {e}")
+        return PARSE_ERROR
+    except OSError as e:
+        err(str(path.relative_to(ROOT)), f"cannot read: {e}")
+        return PARSE_ERROR
 
 
-def norm_next(step: dict, where: str) -> list[tuple[str, str | None]]:
-    """Return [(target_id, when|None)] and report shape errors."""
+def blank(v) -> bool:
+    """True for None, a non-string, or a string that is empty once stripped."""
+    return not isinstance(v, str) or not v.strip()
+
+
+def norm_next(step: dict, where: str, report: bool = True) -> list[tuple[str, str | None]]:
+    """Return [(target_id, when|None)] and, when `report`, report shape errors."""
+    rep = err if report else (lambda *_: None)
     out = []
     nxt = step.get("next")
     if nxt is None:
         return out
     if not isinstance(nxt, list) or not nxt:
-        err(where, "`next` must be a non-empty list")
+        rep(where, "`next` must be a non-empty list")
         return out
     for item in nxt:
         if isinstance(item, str):
@@ -56,14 +91,22 @@ def norm_next(step: dict, where: str) -> list[tuple[str, str | None]]:
         elif isinstance(item, dict) and "to" in item:
             extra = set(item) - {"to", "when"}
             if extra:
-                err(where, f"unknown keys in next target: {sorted(extra)}")
+                rep(where, f"unknown keys in next target: {sorted(extra)}")
             when = item.get("when")
             if when is not None and not isinstance(when, str):
-                err(where, f"`when` must be a string — quote it (YAML reads yes/no/on/off as booleans): {when!r}")
+                rep(where, f"`when` must be a string — quote it (YAML reads yes/no/on/off as booleans): {when!r}")
                 when = None
-            out.append((str(item["to"]), when))
+            if not isinstance(item["to"], str):
+                rep(where, f"next target `to` must be a step id string: {item['to']!r}")
+                continue
+            out.append((item["to"], when))
         else:
-            err(where, f"bad next target: {item!r}")
+            rep(where, f"bad next target: {item!r}")
+    seen_t = set()
+    for t, when in out:
+        if (t, when) in seen_t:
+            rep(where, f"next target `{t}` listed twice with the same condition")
+        seen_t.add((t, when))
     return out
 
 
@@ -81,6 +124,8 @@ def check_workflow(path: Path):
             err(rel, f"missing required field `{k}`")
         elif k != "steps" and not isinstance(data[k], str):
             err(rel, f"`{k}` must be a string (quote it): {data[k]!r}")
+        elif k != "steps" and not data[k].strip():
+            err(rel, f"`{k}` is blank")
     extra = set(data) - WF_ALLOWED
     if extra:
         err(rel, f"unknown workflow fields {sorted(extra)} — add to SCHEMA.md first")
@@ -117,13 +162,15 @@ def check_workflow(path: Path):
         t = s.get("type")
         if t not in STEP_TYPES:
             err(where, f"type must be one of {sorted(STEP_TYPES)}")
-        if not s.get("title"):
-            err(where, "missing `title`")
-        if t != "end" and not s.get("what"):
-            err(where, "missing `what`")
         for k in ("title", "what", "notes", "owner", "input", "output"):
             if k in s and not isinstance(s[k], str):
                 err(where, f"`{k}` must be a string (quote it): {s[k]!r}")
+            elif k in s and not s[k].strip():
+                err(where, f"`{k}` is blank — fill it in or remove the field")
+        if "title" not in s:
+            err(where, "missing `title`")
+        if t != "end" and "what" not in s:
+            err(where, "missing `what`")
         if "owner" in s and s["owner"] == data.get("owner"):
             err(where, "step owner repeats the workflow owner — remove it")
 
@@ -139,9 +186,15 @@ def check_workflow(path: Path):
         if t == "decision":
             if len(targets) < 2:
                 err(where, "decision needs at least two `next` targets")
+            seen_when: set[str] = set()
             for tid, when in targets:
-                if not when:
+                if blank(when):
                     err(where, f"decision target `{tid}` needs a `when`")
+                    continue
+                key = " ".join(when.split()).lower()
+                if key in seen_when:
+                    err(where, f"two exits share the condition `{when}` — the route is ambiguous")
+                seen_when.add(key)
         if t == "handoff":
             if not isinstance(s.get("to"), str) or s["to"].count(".") != 1:
                 err(where, "handoff needs `to: <workflow-id>.<step-id>`")
@@ -210,17 +263,36 @@ def main() -> int:
             err("map.yaml", "missing")
         listed: dict[str, str] = {}
     else:
-        groups = m.get("groups") if isinstance(m, dict) else None
+        if not isinstance(m, dict):
+            err("map.yaml", "top level must be a mapping with `entry`, `exit`, `groups`")
+            m = {}
+        extra = set(m) - MAP_ALLOWED
+        if extra:
+            err("map.yaml", f"unknown fields {sorted(extra)} — add to SCHEMA.md first")
+        groups = m.get("groups")
         listed = {}
         if not isinstance(groups, list):
             err("map.yaml", "`groups` must be a list")
             groups = []
+        group_ids: set[str] = set()
         for g in groups:
             gid = g.get("id") if isinstance(g, dict) else None
             where = f"map.yaml group `{gid}`"
-            if not isinstance(gid, str) or not ID_RE.match(gid) or not g.get("name"):
-                err(where, "group needs kebab-case `id` and `name`")
-            for w in (g.get("workflows") or []) if isinstance(g, dict) else []:
+            if not isinstance(g, dict):
+                err("map.yaml", f"group must be a mapping with `id`, `name`, `workflows`: {g!r}")
+                continue
+            if not isinstance(gid, str) or not ID_RE.match(gid) or blank(g.get("name")):
+                err(where, "group needs kebab-case `id` and a non-empty `name`")
+            if gid in group_ids:
+                err(where, "duplicate group id")
+            group_ids.add(gid)
+            g_extra = set(g) - GROUP_ALLOWED
+            if g_extra:
+                err(where, f"unknown group fields {sorted(g_extra)} — add to SCHEMA.md first")
+            if not isinstance(g.get("workflows"), list):
+                err(where, "`workflows` must be a list of workflow ids")
+                continue
+            for w in g["workflows"]:
                 if not isinstance(w, str):
                     err(where, f"workflow entry must be an id string: {w!r}")
                     continue
@@ -233,7 +305,7 @@ def main() -> int:
             if w not in listed:
                 err("map.yaml", f"workflow `{w}` exists but is not in any group")
         for key in ("entry", "exit"):
-            ref = m.get(key) if isinstance(m, dict) else None
+            ref = m.get(key)
             if not isinstance(ref, str) or ref.count(".") != 1:
                 err("map.yaml", f"`{key}` must be `<workflow-id>.<step-id>`")
                 continue
@@ -252,7 +324,7 @@ def main() -> int:
 
         # rule 8: every step of every workflow is reachable from the system entry, following
         # `next` inside a workflow and `handoff.to` across workflows. A step that is not is stale.
-        entry_ref = m.get("entry") if isinstance(m, dict) else None
+        entry_ref = m.get("entry")
         if isinstance(entry_ref, str) and entry_ref.count(".") == 1 and entry_ref.split(".")[0] in workflows:
             graph: dict[str, list[str]] = {}
             for wid, d in workflows.items():
@@ -260,7 +332,7 @@ def main() -> int:
                     if not isinstance(st, dict) or not isinstance(st.get("id"), str):
                         continue
                     key = f"{wid}.{st['id']}"
-                    outs = [f"{wid}.{t}" for t, _ in norm_next(st, "")]
+                    outs = [f"{wid}.{t}" for t, _ in norm_next(st, "", report=False)]
                     if st.get("type") == "handoff" and isinstance(st.get("to"), str):
                         outs.append(st["to"])
                     graph[key] = outs
