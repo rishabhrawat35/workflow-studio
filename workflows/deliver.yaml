@@ -1,0 +1,308 @@
+id: deliver
+name: Deliver code
+owner: AI
+purpose: >-
+  Turn an approved node or node set, a fix against delivered logic, or a
+  proposed architecture rule into working, verified, component-based code
+  without the PM ever reading code.
+trigger: A change record arrives from Define (approved logic, or a fix) or from Foundation (a proposed rule)
+steps:
+  - id: trace
+    type: step
+    title: Trace the affected code and reusable components
+    output: The list of affected code (new or existing) and of existing components that can be reused, written into the record
+    what: >-
+      The AI reads the architecture file (systems, structure, rules), then
+      compares the business side with the last delivered version. For a node
+      or node set, it finds every piece of code tagged with those ids:
+      brand-new if nothing is tagged yet, otherwise an edit. For a bug, it
+      starts from the node id and the violated criterion in the record; for
+      a patch or refactor, from what changes underneath and the code that
+      uses it. For a proposed rule, it reads every tagged piece against the
+      rule. In every case it also searches the existing components for ones
+      that already do part of the job, so nothing is written twice.
+    notes: >-
+      Node impact comes from the tags, never guessed; rule impact comes from
+      reading the code against the rule. Every step of this workflow writes
+      its output to disk before the next step starts.
+    next: [plan]
+
+  - id: plan
+    type: step
+    title: Write the change plan in plain language
+    output: >-
+      In the record: the plan section (for the PM) and the AI section
+      (task list and sources), kept apart under their own headings
+    what: >-
+      Plan section, for the PM, no code inside: what will change for the
+      user, what will not change, the logic delta for a change, what happens
+      to any existing stored data, which existing components are reused and
+      which new ones are created (by their plain names), anything the PM
+      must supply before work can start (a key, an account, a file), any
+      active decision this plan would alter (brought forward with its
+      situation and reasons), and that the result will be verified against
+      the confirmed acceptance criteria of every node it touches; in the
+      small lane this is one paragraph. AI section: the task list in the
+      form "- [ ] T001 [P] [node-id] what, in which file", grouped in the
+      phases Setup, Foundational, one phase per node, Polish, where [P]
+      marks a task that touches different files from every unfinished task
+      and can run alongside them; and, per tool choice, the current
+      documentation consulted as Decision / Rationale / Alternatives with
+      sources, so the code is built the way those tools are used today, not
+      from memory.
+    next: [challenge-plan]
+
+  - id: challenge-plan
+    type: step
+    title: Challenge the plan
+    output: A findings section in the record (what was found and how it was fixed)
+    what: >-
+      A second, independent AI pass reads the record, the node(s), the
+      traced code and the components, and reports: anything the plan
+      promises that the node and the tags do not justify; anything affected
+      that the plan omits; a new component that duplicates an existing one;
+      sources that are missing or outdated; a coverage table with one row
+      per acceptance criterion (criterion, has a task, task ids) where an
+      empty row is a finding; a plan that alters an active decision without
+      bringing it forward; and any code words in the plan section. Findings
+      are fixed before the PM sees it.
+    notes: >-
+      Non-trivial means the change touches existing code or more than one
+      criterion. A challenge that finds nothing on non-trivial work is run
+      once more with a different framing (as the user of the changed flow;
+      as the owner of the components touched); in the small lane it runs
+      once. When the record returns here after a revision, the challenge
+      reads only the delta since its last pass plus what it touches.
+    next: [approve-plan]
+
+  - id: approve-plan
+    type: decision
+    title: PM approves the plan?
+    owner: PM
+    input: "PM's answer: execute (supplying anything the plan asked for); revise the plan; revise the logic; revise the rule; or drop"
+    output: The answer, written into the record; on execute, a decision entry for the plan and for each AI choice inside it that adds a dependency or a stored data shape, superseding any earlier decision the PM chose to change; before the answer is taken the AI repeats the decision-log search on the components the plan touches, and a hit not already in the findings blocks the gate and returns to challenge-plan
+    what: >-
+      PM reads the plan section and answers. "Revise the plan" is for a
+      defect in the plan (a wrong word, something forgotten, an empty case);
+      "revise the logic" is for a change in what the product should do and
+      goes to the business side first, never straight into code. "Revise
+      the rule" applies only to a rule record; "revise the logic" only to a
+      logic or fix record.
+    next:
+      - to: execute
+        when: yes, execute
+      - to: plan
+        when: the plan needs revising (the logic and the rule stand)
+      - to: back-to-define
+        when: the business logic needs revising
+      - to: back-to-foundation
+        when: the proposed rule needs revising
+      - to: drop
+        when: no, drop this change
+
+  - id: execute
+    type: step
+    title: Execute the change
+    output: Code and tests as components under their system, tagged, uncommitted; each task ticked in the record as it completes
+    what: >-
+      The AI works through the plan's task list one task at a time, ticking
+      each in the record as it is done, so an interruption resumes at the
+      next unticked task. It writes the code and its tests inside the
+      architecture rules and its never-do list, as components under the
+      folder of the system they belong to (frontend, backend, service),
+      reusing the components the plan named and tagging every touched
+      piece with the id of each node it serves. For a retired node, code
+      tagged only by retired nodes is removed.
+    notes: A PM "stop" that arrives during execution is honoured at the next task boundary.
+    next: [tasks-done]
+
+  - id: tasks-done
+    type: decision
+    title: All tasks done as planned?
+    what: >-
+      Every task is ticked and was done as the plan said. A task that cannot
+      be done as planned (a tool missing, an API different from the
+      documentation, a component that turns out not to fit) stops the work;
+      the AI does not improvise around the plan.
+    notes: When in doubt whether a deviation is within the plan, it is not; go back to plan.
+    next:
+      - to: verify
+        when: all tasks done as planned
+      - to: plan
+        when: a task cannot be done as planned; the reason is written into the record
+      - to: drop
+        when: PM stopped the change
+
+  - id: verify
+    type: step
+    title: Verify against the acceptance criteria
+    output: Test results and a findings section, written into the record
+    what: >-
+      The whole test suite runs, not only the touched nodes' tests, so a
+      regression elsewhere is seen; a criterion with no test is a finding,
+      so an empty suite never passes by default; a test that fails once and
+      passes on rerun is reported as flaky, not counted as a failed pass. A
+      second, independent AI pass checks the result against the confirmed
+      acceptance criteria of every touched node, the architecture rules and
+      its never-do list, and the sources the plan recorded; not against the
+      plan itself. Untagged code and a component that duplicates another
+      are findings.
+    notes: >-
+      A verification that finds nothing on a change touching existing code
+      is the most suspicious result in the system; it is run once more with
+      a different framing (as the user trying to break it; as the owner of
+      the untouched nodes) before it counts.
+    next: [passes]
+
+  - id: passes
+    type: decision
+    title: Verification passes?
+    output: The failed-pass count, kept in the record and reset whenever the record returns to plan
+    what: Every acceptance criterion holds and the reviewer has no open finding.
+    notes: When in doubt whether a finding is fixable in code, it goes back to plan; the loop never guesses towards "pass".
+    next:
+      - to: execute
+        when: a finding is fixable in code, and fewer than three passes have failed
+      - to: plan
+        when: the plan itself was wrong, or three passes have failed; unfinished code is set aside
+      - to: accept
+        when: all criteria hold
+
+  - id: accept
+    type: decision
+    title: PM accepts the result?
+    owner: PM
+    input: >-
+      The PM's own use of the changed flow, or, when it cannot be used
+      (a background job, an event, a patch, a rule change touching no
+      node), the evidence shown: test output, logs, a recorded run. Then the
+      PM's answer: accept; not matching; changed mind about the logic;
+      changed mind about the rule; or stop.
+    output: The answer, and for "not matching" what was seen, written into the record; on accept, a decision entry if acceptance settled anything the plan left open (it never supersedes; a conflict found here is a finding for the next plan)
+    what: >-
+      The AI runs the product using the architecture file's run
+      instructions and tells the PM, in plain language, where to go and
+      what to try; where nothing can be tried, it shows the evidence
+      instead. The PM judges against the approved node(s) and their
+      criteria; for a rule delivery, against the evidence that every tagged
+      piece still passes its criteria. "Changed mind about the rule"
+      applies only to a rule record.
+    next:
+      - to: commit
+        when: accepted
+      - to: plan
+        when: it does not match the approved logic although verification passed; the plan or its tasks were wrong
+      - to: back-to-define
+        when: seeing it changed the PM's mind about the logic
+      - to: back-to-foundation
+        when: seeing it changed the PM's mind about the rule
+      - to: drop
+        when: PM stops the change
+
+  - id: commit
+    type: step
+    title: Save code, tests and record together
+    output: "One code commit: code, tests, the completed change record, the regenerated component index, each delivered node's status set to \"delivered\" with its version, a lesson appended to the decisions ledger if any, and an accepted rule if any"
+    what: >-
+      One commit holds the code, the tests and the completed change record,
+      which names the version of each business node it delivers or, for a
+      fix, the existing version the code now satisfies, plus the
+      regenerated component index (component, system, nodes served). If the
+      change was a proposed rule, the rule is written into the architecture
+      file, as a new entry in its history, in the same commit, and the
+      decision behind the old rule is marked superseded by the new one. Any
+      lesson worth keeping (a pattern that worked, a trap avoided) is
+      written as a decision entry of category process or code; it never
+      supersedes an existing decision, and a conflict it finds becomes a
+      finding for the next plan. The decision index is regenerated and must
+      validate, or the commit does not happen. Waiting records on a node this
+      delivers are re-sorted. "What did we build for this logic" then has
+      one answer.
+    next: [was-rule]
+
+  - id: was-rule
+    type: decision
+    title: Was this a proposed rule?
+    what: >-
+      A rule change was raised for a request. If that request still needs
+      logic, it continues in Define; if the request was the rule itself, it
+      is closed as delivered here.
+    notes: >-
+      When in doubt, the request continues in Define; the PM can settle it
+      there. For a large rule change split into several records, "still
+      needs logic" is answered no until the last record is delivered.
+    next:
+      - to: resume-define
+        when: yes, and the request still needs logic
+      - to: done
+        when: no (a node or a fix was delivered), or the request was the rule itself
+
+  - id: drop
+    type: step
+    title: Drop the change
+    output: Change record marked dropped (or, for a rule, "rule dropped"); node reverted or rule discarded; set-aside code discarded; a decision entry with the PM's reason for dropping, superseding every active decision written under this record
+    what: >-
+      A node is returned to its last delivered version on the business
+      side, or removed if it was never delivered; a proposed rule is
+      discarded. Any request that depended on this one returns to waiting.
+      The business side never claims behaviour or rules the product does
+      not have.
+    next: [was-rule-drop]
+
+  - id: was-rule-drop
+    type: decision
+    title: Did a request need this rule?
+    what: >-
+      A dropped rule must not silently drop the capability that asked for
+      it: the request continues in Define, where the PM decides to go on
+      within the current rules or to stop.
+    next:
+      - to: resume-define
+        when: yes, the request still needs logic
+      - to: dropped
+        when: no, or the request was the rule itself
+
+  - id: back-to-define
+    type: handoff
+    title: Return to the business side
+    output: The record with the PM's revision, handed to Define
+    what: >-
+      Any unfinished code is set aside. The business side is edited first,
+      goes through challenge and PM approval again, and only then is a fresh
+      plan written.
+    to: define.discuss
+    next: [returned]
+
+  - id: back-to-foundation
+    type: handoff
+    title: Return the rule to Foundation
+    output: The record with the PM's revision, handed to Foundation
+    what: >-
+      Any unfinished code is set aside. The PM revises the proposed rule and
+      it comes back for a fresh impact check and plan.
+    to: foundation.propose-rule
+    next: [returned]
+
+  - id: resume-define
+    type: handoff
+    title: Continue the request
+    output: The record, with the rule now applied or marked dropped, and the current architecture file, handed to Define
+    what: >-
+      The request that needed the rule continues into discussion with the
+      current architecture file and the glossary as inputs; if the rule was
+      dropped, the discussion decides whether to go on within the current
+      rules or stop.
+    to: define.discuss
+    next: [done]
+
+  - id: returned
+    type: end
+    title: Sent back for revision
+
+  - id: dropped
+    type: end
+    title: Change dropped
+
+  - id: done
+    type: end
+    title: Delivered

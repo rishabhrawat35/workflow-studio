@@ -1,0 +1,300 @@
+id: define
+name: Define business logic
+owner: PM
+purpose: >-
+  The one door every message from the PM enters. Sorts it into the right
+  next step, and for business logic turns it into one approved node (or node
+  set) with acceptance criteria the PM has confirmed, stored on the business
+  side only.
+trigger: The PM says anything to the system — an idea, a new capability, a change, a bug, a question, a queue instruction, a document such as a PRD, or a request received from anyone (the AI may also add a request, marked as its own)
+steps:
+  - id: intake
+    type: step
+    title: State the idea or request
+    input: >-
+      The request in the PM's own words. For a bug, what was seen and where.
+      Every PM message is an intake, including an answer at a gate that
+      carries a new request inside it, and including "just fix the typo".
+    output: >-
+      A change record is created for the request the moment it is stated
+      (named by date, number and a short slug), with a status line naming
+      the current step, who it waits on, and since when; the queue lists
+      all records in order.
+    what: >-
+      PM states what is wanted: a new capability, a change to existing
+      logic, a bug against delivered logic, a dependency patch or a refactor
+      that keeps behaviour, a question about the product or its status, a
+      queue instruction (cancel, reorder), a document (a PRD, notes) holding
+      several of these, or a request received from someone else. A document
+      is split by the AI into one record per request, listed back to the PM
+      to order.
+    notes: >-
+      Every step of this workflow writes its output to disk before the next
+      step starts, so work resumes from the last completed step after any
+      interruption. A message that arrives while the AI is mid-execution is
+      taken in as an intake and queued; a "stop" is honoured at the next
+      task boundary.
+    next: [sort]
+
+  - id: sort
+    type: decision
+    title: What kind of request is this?
+    owner: AI
+    output: The kind chosen, the reason, and the lane (small or full), written into the record's state
+    what: >-
+      The AI reads the architecture file and searches the logic tree and
+      the queue, then sorts the request and writes why. The PM overrules the
+      sorting at the first PM step of the chosen path: settled (a question),
+      confirm-exists, discuss (which can redirect to any other path), the
+      Foundation input step (which can say "not needed"), or
+      deliver.approve-plan.
+    notes: >-
+      When in doubt the AI chooses the path with more PM gates and says why:
+      build over question, logic over fix, foundation over logic. Where two
+      kinds both apply (new logic that also needs a rule), the foundation
+      path wins; the logic follows once the rule is in. A change
+      to the meaning of an existing glossary term is a cross-cutting change
+      to every node that uses it. A bug is sorted as a fix when the AI can
+      name the delivered criterion the symptom violates; the PM need not
+      name it. Lane: "small" when the request touches one existing node,
+      adds no component and needs no rule; otherwise "full". A small lane
+      keeps every gate but runs each challenge once and keeps the plan to
+      one paragraph.
+    next:
+      - to: answer
+        when: a question (what does the product do, where is a request, why does it behave this way, is this in scope, show me the product) or a queue instruction (cancel or reorder a waiting request)
+      - to: confirm-exists
+        when: the logic already exists as a node
+      - to: discuss
+        when: new logic, a change to an existing node, or a cross-cutting change to several nodes
+      - to: to-foundation
+        when: no architecture file yet, or the request needs a tool, language or rule the architecture does not allow
+      - to: to-fix
+        when: existing logic and unchanged criteria — code wrong (the AI can name the violated criterion), a dependency patch, or a refactor that keeps behaviour
+
+  - id: answer
+    type: step
+    title: Answer from the business side
+    owner: AI
+    output: The answer with its source named (node, record, rule, glossary term, or the framework's own scope), or the queue change made; written into the record
+    what: >-
+      The AI answers only from what is written: the logic tree and its
+      index, the change records and queue, the decision log (first, for
+      "why"), the architecture file, the glossary, and the framework
+      reference for questions about scope. If
+      the answer is not there, it says so instead of guessing. "Show me the
+      product" runs it using the architecture file's run instructions. A
+      queue instruction (cancel a waiting request, change the order) is
+      applied and confirmed.
+    next: [settled]
+
+  - id: settled
+    type: decision
+    title: PM settled?
+    input: PM's answer after reading the answer
+    what: The PM confirms the question is settled, or turns it into a request, which is re-sorted. A follow-up question is a new intake.
+    next:
+      - to: answered
+        when: settled
+      - to: sort
+        when: this is a request to build; sort it
+
+  - id: answered
+    type: end
+    title: Answered
+
+  - id: confirm-exists
+    type: decision
+    title: PM confirms it already exists?
+    input: PM's answer after being shown the node that covers the request
+    what: The AI names the node and shows its description and criteria.
+    next:
+      - to: exists
+        when: yes, nothing to build
+      - to: discuss
+        when: no, it differs; treat it as a change to that node
+
+  - id: exists
+    type: end
+    title: Already exists
+    output: The change record closed as "already exists", naming the node.
+
+  - id: to-foundation
+    type: handoff
+    title: Set or change the foundation first
+    output: The change record, handed to Foundation; its status now walks through Foundation and, for a rule, Delivery
+    what: >-
+      Foundation is written (new product) or a rule change is proposed and
+      impact-checked. One record, one status line, wherever it is.
+    to: foundation.new-or-change
+    next: [handed-over]
+
+  - id: to-fix
+    type: handoff
+    title: Send the fix straight to delivery
+    output: >-
+      The change record, handed to Deliver. For a bug: the node id, the
+      violated criterion and what was seen. For a patch or refactor: what
+      changes underneath, the statement that behaviour is unchanged, and
+      the nodes served by the code it touches.
+    what: >-
+      The logic is not in question, so no Define pass. Delivery traces the
+      code and plans the fix; every PM gate in Deliver still applies, and
+      the PM can send it to Define from there if it turns out to be a logic
+      change.
+    to: deliver.trace
+    next: [handed-over]
+
+  - id: discuss
+    type: decision
+    title: Discuss the capability
+    input: >-
+      What the product must do, for whom, where it sits in the tree, what
+      must be true to call it working; for a cross-cutting change, which
+      nodes it touches. Or a correction of the sorting: it is a fix, it
+      already exists, it needs the foundation, or stop.
+    output: Discussion notes appended to the record
+    what: >-
+      PM and the AI talk it through (a page or capability, then its
+      sub-flows, e.g. login page > logout, forgot password). Inputs: the
+      architecture file, the glossary, and for a change the current node(s).
+      The discussion is where the PM redirects a wrongly sorted request.
+    next:
+      - to: write
+        when: it is business logic; write it
+      - to: to-fix
+        when: the logic is unchanged; it is a fix
+      - to: confirm-exists
+        when: it already exists
+      - to: to-foundation
+        when: it needs the foundation first
+      - to: drop
+        when: PM stops the request
+
+  - id: write
+    type: step
+    title: Write or update the node, or the node set
+    owner: AI
+    output: >-
+      Draft node(s): description, proposed acceptance criteria, proposed
+      placement in the tree, any proposed glossary additions; or a node
+      marked retired.
+    what: >-
+      The AI writes each node under its stable id, in plain language, from
+      what the PM said, checked against the architecture file. It proposes
+      the placement (an existing parent or a new header, with the reason),
+      proposes a split if the node is too large, and marks a node retired
+      when the capability is being removed. Any product term not in the
+      glossary is proposed as an addition. Where the discussion left a
+      gap, the AI fills it with a stated default listed under "Assumptions"
+      in the draft; at most three gaps become questions, asked one at a
+      time, each with two to four options and a recommended one, in the
+      order scope, then safety, then experience, then technology.
+    notes: >-
+      The id never changes even if the title or the placement does. Code
+      built for a node carries the id as a tag; that is how changes are
+      traced. Every answered question is written into the draft and the
+      record; the PM can veto any default at approve.
+    next: [challenge]
+
+  - id: challenge
+    type: step
+    title: Challenge the logic
+    owner: AI
+    output: A findings section in the record (what was found and how it was fixed), the logic delta (what changes against the delivered version, in plain words) and the list of other nodes affected, for the PM
+    what: >-
+      A second, independent AI pass reads the draft, the glossary, the logic
+      tree and the architecture file. It reports ambiguity, criteria that
+      cannot be verified, conflicts with the architecture rules, terms not in
+      the glossary, and a placement that makes the tree harder to read. It
+      also traces the business side: every other node whose text or links
+      the change affects is listed for the PM, and a conflict with an
+      existing node names that node as one the PM must revise next. For a
+      change it writes the logic delta: what the node said before, what it
+      says now. It searches the decision log: a draft that alters an active
+      decision is reported, and that decision (situation, decision,
+      reasons) is put in front of the PM at approve, side by side with the
+      new one.
+    notes: >-
+      Non-trivial means the draft touches an existing node or has more than
+      one criterion. A challenge that finds nothing on non-trivial work is
+      run once more with a different framing (as a new user; as the owner
+      of the neighbouring nodes; as the verifier who must test it) before
+      the draft goes to the PM; in the small lane it runs once. When the
+      record returns here after a PM revision, the challenge reads only the
+      delta since its last pass plus the parts that delta touches, never
+      the whole draft again.
+    next: [approve]
+
+  - id: approve
+    type: decision
+    title: PM approves the logic?
+    input: >-
+      PM's yes, with the acceptance criteria confirmed as saying what
+      "working" means (adding or removing any); or what to change. For a
+      node set, or to deliver this node together with another waiting node,
+      the PM says so here.
+    output: The answer, written into the record; a decision entry for what was finalised (logic, criteria, placement, glossary additions), superseding any earlier decision the PM chose to change
+    what: >-
+      PM reads the whole draft as a non-technical document: description,
+      acceptance criteria, placement, glossary additions, the logic delta
+      for a change, the findings the challenge caught, the list of other
+      nodes affected, and any earlier decision this would alter, with its
+      situation and reasons. Before the answer is taken, the AI repeats the
+      decision-log search on the final draft's nodes and glossary terms; a
+      hit not already in the findings blocks the gate and returns to
+      challenge. Changing an earlier decision is an explicit yes, never a
+      side effect.
+    notes: >-
+      If the PM both changes criteria and wants other changes, the logic
+      change wins and it goes back to discuss. A changed criterion alone goes
+      back through challenge; that is the one place two PM readings of the
+      same document follow each other, by design.
+    next:
+      - to: discuss
+        when: PM wants changes to the logic
+      - to: challenge
+        when: PM changed or added acceptance criteria
+      - to: commit
+        when: PM says yes
+      - to: drop
+        when: PM stops the request
+
+  - id: commit
+    type: step
+    title: Save the business side
+    owner: AI
+    output: Approved node(s) and glossary additions, saved with history (a node version each), each node's status set to "approved, not yet delivered"; the logic index regenerated
+    what: >-
+      The node(s) and any approved glossary additions are saved with their
+      history, business side only. Every later version of a node is one
+      entry in that history. A node whose text did not change gets no new
+      version.
+    next: [to-deliver]
+
+  - id: to-deliver
+    type: handoff
+    title: Send to delivery
+    output: The approved node or node set, with confirmed acceptance criteria, in the same change record, handed to Deliver
+    what: The code side starts from this record; nothing else crosses the boundary.
+    to: deliver.trace
+    next: [handed-over]
+
+  - id: drop
+    type: step
+    title: Drop the request
+    owner: AI
+    output: Change record marked dropped; draft discarded; dependants returned to waiting; a decision entry with the PM's reason for stopping, superseding every active decision written under this record
+    what: >-
+      The draft is discarded, the change record is closed as dropped, and
+      any request that depended on it returns to waiting. Nothing was saved
+      except the decision to stop and why.
+    next: [dropped]
+
+  - id: handed-over
+    type: end
+    title: Handed over; the record continues in Foundation or Delivery
+
+  - id: dropped
+    type: end
+    title: Request dropped

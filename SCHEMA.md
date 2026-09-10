@@ -18,7 +18,7 @@ validator gets fixed.
 ```yaml
 id: claim-intake            # kebab-case, unique, equals filename
 name: Claim intake
-owner: Ops                  # team or role accountable for the whole workflow
+owner: PM                   # who is accountable for the whole workflow; `input` is only allowed on PM-owned steps
 purpose: >-                 # one or two sentences: why this workflow exists
   Turn a raw claim request into a validated claim ready for adjudication.
 trigger: Member submits a claim in the app     # what starts it (free text)
@@ -26,6 +26,7 @@ steps:
   - id: receive             # kebab-case, unique within this workflow
     type: step              # step | decision | handoff | end
     title: Receive claim
+    input: The claim form as the member submitted it   # what the PM provides here (PM-owned steps only)
     what: >-                # what actually happens here
       System creates a claim record and notifies the intake queue.
     notes: >-               # optional: comments, open questions, context
@@ -73,6 +74,8 @@ steps:
 | `next` | step, decision, handoff | list of targets, see below; `end` must **not** have `next` |
 | `to` | handoff only | `<workflow-id>.<step-id>`; must point to a step in a *different* workflow file (same-workflow flow uses `next`) |
 | `owner` on a step | optional | only when it differs from the workflow owner; never repeat the workflow owner on every step |
+| `input` | optional | what the PM provides at this step (words, a file, a decision). Present only on steps where the PM gives something; drawn as a PM INPUT badge |
+| `output` | optional | what durable thing this step produces (a draft, a saved file, a commit, what a handoff carries). Present only where something leaves the step |
 
 ### `next` targets
 
@@ -83,14 +86,19 @@ Either a plain step id, or `{to: <step-id>, when: <condition>}`.
 ### Graph rules (validator-enforced)
 
 1. Every `next` / `to` target resolves.
-2. Exactly one step is the entry point: the first step in the list. Nothing else is inferred from order.
+2. Exactly one step is the entry point: the first step in the list. Nothing else is inferred from order. The renderer labels it ENTRY.
 3. Every step is reachable from the entry.
 4. Every non-`end` step has a path to an `end` step.
-5. At least one `end` step.
+5. At least one `end` step. Every `end` and every `handoff` is an exit; the renderer labels them EXIT (a handoff's exit says where it goes).
+6. Every workflow has at least one step with `input`: a workflow the PM cannot feed is not allowed.
+7. `input` is only allowed on steps owned by the PM (workflow owner or step override); `output` is allowed on any step.
+8. Every step of every workflow is reachable from the system entry in `map.yaml`, following `next` inside a workflow and `handoff.to` across workflows, and the system exit is reachable from the entry. A step that is not is a stale step and fails validation.
 
 ## `map.yaml`
 
 ```yaml
+entry: claim-intake.receive      # the step where the PM's input enters the whole system
+exit: claim-adjudication.done    # the end step where the finished result leaves it
 groups:
   - id: ops
     name: Operations
@@ -100,7 +108,7 @@ groups:
     workflows: [member-onboarding]
 ```
 
-Rules: group `id` is kebab-case; every file in `workflows/` appears in exactly one group; every id listed exists as a file.
+Rules: `entry` names an existing step that carries `input` and is the first step of its workflow; `exit` names an existing `end` step; group `id` is kebab-case; every file in `workflows/` appears in exactly one group; every id listed exists as a file. The map draws the PM feeding `entry` and the result leaving at `exit`.
 The map view is drawn from this grouping plus the handoffs found in the workflow files.
 
 ## What is deliberately not in the schema

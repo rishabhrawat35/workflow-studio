@@ -13,7 +13,9 @@ map.yaml             workflow of workflows: registry + grouping
 workflows/*.yaml     one file per workflow
 studio.html          the renderer — open in a browser
 tools/validate.py    checks every rule in SCHEMA.md
-tools/build.py       embeds the YAML into studio.html (runs validate first)
+tools/build.py       embeds the YAML into studio.html (runs validate first, then docs.py)
+tools/docs.py        generates framework/steps.md from the YAML
+framework/           operating reference for the framework: README (entry), components/, steps.md (generated)
 tools/studio.template.html   renderer source
 build/               generated artifact copy, not hand-edited
 ```
@@ -23,7 +25,7 @@ build/               generated artifact copy, not hand-edited
 1. Edit `workflows/*.yaml` and, if a workflow was added or moved, `map.yaml`.
 2. `python3 tools/validate.py` — must print `OK`.
 3. Challenger review: an independent reviewer checks the diff against `SCHEMA.md`, `map.yaml` and what was actually discussed. Findings are fixed before anything is saved.
-4. `python3 tools/build.py` → refreshes `studio.html`.
+4. `python3 tools/build.py` → refreshes `studio.html` and `framework/steps.md`.
 5. Commit. Republish the artifact.
 
 Nothing is committed that fails step 2 or 3.

@@ -1,0 +1,76 @@
+# Orchestration layer 1 — who runs each step, in which mode, reading what.
+# Every step of every workflow must appear here exactly once (orchestrate.py check).
+# mode: pm        the PM answers; the orchestrator waits
+#       agent     one AI role produces the step's output
+#       challenger a fresh AI context reads only `inputs` and returns findings
+#       auto      routing without judgment: handoffs and ends only (no AI, no PM)
+# A decision with judgment in it is `agent` with the role that just did the work
+# (Verifier decides passes, Builder decides tasks-done, Sorter decides routing).
+# framings: for challenger steps, the alternative lenses used when a pass finds nothing on non-trivial work
+roles:
+  Sorter:     reads the architecture file, the logic index, the queue, the decision index; never writes logic or code
+  Writer:     writes nodes, glossary proposals and answers from the discussion; never writes code
+  Planner:    traces code and components, writes plans, task lists and sources; never writes code
+  Builder:    writes code and tests task by task; never edits the business side
+  Verifier:   runs the suite and judges code against criteria, rules and sources; never fixes code
+  Challenger: reads only the listed inputs, returns findings only; never rewrites
+
+steps:
+  define.intake:         {mode: pm,   role: Sorter,  inputs: [request]}
+  define.sort:           {mode: agent, role: Sorter, inputs: [record, architecture, logic-index, queue, decisions-index]}
+  define.answer:         {mode: agent, role: Writer, inputs: [record, logic-tree, changes, decisions, architecture, glossary, framework-readme]}
+  define.settled: {mode: pm,   role: Sorter,  inputs: [record, answer]}
+  define.confirm-exists: {mode: pm,   role: Sorter,  inputs: [record, node]}
+  define.exists: {mode: auto, role: Sorter,  inputs: [record]}
+  define.to-foundation:  {mode: auto, role: Sorter,  inputs: [record]}
+  define.to-fix:         {mode: auto, role: Sorter,  inputs: [record]}
+  define.discuss: {mode: pm,   role: Writer,  inputs: [record, architecture, glossary, nodes-touched, sort-reason]}
+  define.write:          {mode: agent, role: Writer, inputs: [record, discussion-notes, architecture, glossary, logic-tree, decisions-touched]}
+  define.challenge: {mode: challenger, role: Challenger, inputs: [draft, glossary, logic-tree, architecture, decisions-touched, delivered-node-version, delta-since-last-pass],
+                          framings: [a new user of the product, the owner of the neighbouring nodes, the verifier who must test it]}
+  define.approve: {mode: pm,   role: Writer,  inputs: [draft, findings, logic-delta, affected-nodes, decisions-index, decisions-brought-forward]}
+  define.commit:         {mode: agent, role: Writer, inputs: [approved-draft]}
+  define.to-deliver:     {mode: auto, role: Writer,  inputs: [record]}
+  define.drop:           {mode: agent, role: Writer, inputs: [record]}
+  define.handed-over:    {mode: auto, role: Sorter,  inputs: [record]}
+  define.answered:       {mode: auto, role: Sorter,  inputs: [record]}
+  define.dropped:        {mode: auto, role: Sorter,  inputs: [record]}
+
+  foundation.new-or-change: {mode: agent, role: Sorter, inputs: [record, architecture-exists]}
+  foundation.architecture:  {mode: pm,   role: Writer, inputs: [record, findings]}
+  foundation.check: {mode: challenger, role: Challenger, inputs: [architecture-draft, accepted-findings, pm-answer, decisions-index],
+                             framings: [the builder who must run it, the reviewer looking for what is missing]}
+  foundation.glossary:      {mode: pm,   role: Writer, inputs: [record, architecture]}
+  foundation.save:          {mode: agent, role: Writer, inputs: [architecture, glossary]}
+  foundation.foundation-only: {mode: agent, role: Sorter, inputs: [record]}
+  foundation.ready:         {mode: auto, role: Sorter, inputs: [record]}
+  foundation.propose-rule:  {mode: pm,   role: Writer, inputs: [record, architecture, decision-behind-rule, findings]}
+  foundation.check-rule: {mode: challenger, role: Challenger, inputs: [proposed-rule, architecture, accepted-findings, pm-answer],
+                             framings: [the builder who must apply it, the owner of the code it touches]}
+  foundation.impact:        {mode: auto, role: Sorter, inputs: [record]}
+  foundation.not-needed:    {mode: auto, role: Sorter, inputs: [record]}
+  foundation.drop:          {mode: agent, role: Writer, inputs: [record]}
+  foundation.dropped:       {mode: auto, role: Sorter, inputs: [record]}
+  foundation.done:          {mode: auto, role: Sorter, inputs: [record]}
+
+  deliver.trace:            {mode: agent, role: Planner, inputs: [record, architecture, logic-nodes, code-tags, components-index]}
+  deliver.plan:             {mode: agent, role: Planner, inputs: [record, trace, nodes, decisions-touched, tool-docs]}
+  deliver.challenge-plan:   {mode: challenger, role: Challenger, inputs: [record, nodes, trace, components-index, decisions-touched, delta-since-last-pass],
+                             framings: [the user of the changed flow, the owner of the components touched]}
+  deliver.approve-plan: {mode: pm,   role: Planner, inputs: [plan-section, findings, decisions-index, components-index, decisions-brought-forward]}
+  deliver.execute: {mode: agent, role: Builder, inputs: [record, plan, task-list, sources, architecture, components-index, decisions-index]}
+  deliver.tasks-done: {mode: agent, role: Builder, inputs: [record, task-list, pm-stop-if-any]}
+  deliver.verify: {mode: challenger, role: Verifier, inputs: [record, code, tests, criteria, architecture, sources, components-index],
+                             framings: [the user trying to break it, the owner of the untouched nodes]}
+  deliver.passes: {mode: agent, role: Verifier, inputs: [record, verify-findings, failed-passes]}
+  deliver.accept: {mode: pm,   role: Builder, inputs: [running-product-or-evidence, architecture-run-instructions, nodes, criteria]}
+  deliver.commit: {mode: agent, role: Builder, inputs: [record, code, tests, decisions, architecture, components-index, logic-index]}
+  deliver.was-rule: {mode: agent, role: Sorter, inputs: [record]}
+  deliver.drop:             {mode: agent, role: Builder, inputs: [record]}
+  deliver.was-rule-drop: {mode: agent, role: Sorter, inputs: [record]}
+  deliver.back-to-define:   {mode: auto, role: Sorter, inputs: [record]}
+  deliver.back-to-foundation: {mode: auto, role: Sorter, inputs: [record]}
+  deliver.resume-define:    {mode: auto, role: Sorter, inputs: [record]}
+  deliver.returned:         {mode: auto, role: Sorter, inputs: [record]}
+  deliver.dropped:          {mode: auto, role: Sorter, inputs: [record]}
+  deliver.done:             {mode: auto, role: Sorter, inputs: [record]}

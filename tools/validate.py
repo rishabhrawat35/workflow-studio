@@ -17,7 +17,7 @@ MAP = ROOT / "map.yaml"
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 STEP_TYPES = {"step", "decision", "handoff", "end"}
 WF_REQUIRED = ["id", "name", "owner", "purpose", "trigger", "steps"]
-STEP_ALLOWED = {"id", "type", "title", "what", "notes", "next", "to", "owner"}
+STEP_ALLOWED = {"id", "type", "title", "what", "notes", "next", "to", "owner", "input", "output"}
 WF_ALLOWED = set(WF_REQUIRED)
 
 errors: list[str] = []
@@ -121,12 +121,14 @@ def check_workflow(path: Path):
             err(where, "missing `title`")
         if t != "end" and not s.get("what"):
             err(where, "missing `what`")
-        for k in ("title", "what", "notes", "owner"):
+        for k in ("title", "what", "notes", "owner", "input", "output"):
             if k in s and not isinstance(s[k], str):
                 err(where, f"`{k}` must be a string (quote it): {s[k]!r}")
         if "owner" in s and s["owner"] == data.get("owner"):
             err(where, "step owner repeats the workflow owner — remove it")
 
+        if "input" in s and s.get("owner", data.get("owner")) != "PM":
+            err(where, "`input` is only allowed on PM-owned steps")
         targets = norm_next(s, where)
         targets_by_id[sid] = targets
         if t == "end":
@@ -145,6 +147,9 @@ def check_workflow(path: Path):
                 err(where, "handoff needs `to: <workflow-id>.<step-id>`")
         elif "to" in s:
             err(where, "`to` is only allowed on handoff steps")
+
+    if ids and not any("input" in s for s in ids.values()):
+        err(rel, "no step has `input` — the PM has no way into this workflow")
 
     # graph rules
     if steps and isinstance(steps[0], dict) and steps[0].get("id") in ids:
@@ -227,6 +232,51 @@ def main() -> int:
         for w in workflows:
             if w not in listed:
                 err("map.yaml", f"workflow `{w}` exists but is not in any group")
+        for key in ("entry", "exit"):
+            ref = m.get(key) if isinstance(m, dict) else None
+            if not isinstance(ref, str) or ref.count(".") != 1:
+                err("map.yaml", f"`{key}` must be `<workflow-id>.<step-id>`")
+                continue
+            tw, _, ts = ref.partition(".")
+            if tw not in workflows:
+                err("map.yaml", f"`{key}` names unknown workflow `{tw}`")
+                continue
+            wsteps = [x for x in workflows[tw].get("steps") or [] if isinstance(x, dict)]
+            step = next((x for x in wsteps if x.get("id") == ts), None)
+            if step is None:
+                err("map.yaml", f"`{key}` names unknown step `{ref}`")
+            elif key == "entry" and (step is not wsteps[0] or "input" not in step):
+                err("map.yaml", f"`entry` must be the first step of `{tw}` and carry `input`")
+            elif key == "exit" and step.get("type") != "end":
+                err("map.yaml", f"`exit` must be an `end` step")
+
+        # rule 8: every step of every workflow is reachable from the system entry, following
+        # `next` inside a workflow and `handoff.to` across workflows. A step that is not is stale.
+        entry_ref = m.get("entry") if isinstance(m, dict) else None
+        if isinstance(entry_ref, str) and entry_ref.count(".") == 1 and entry_ref.split(".")[0] in workflows:
+            graph: dict[str, list[str]] = {}
+            for wid, d in workflows.items():
+                for st in d.get("steps") or []:
+                    if not isinstance(st, dict) or not isinstance(st.get("id"), str):
+                        continue
+                    key = f"{wid}.{st['id']}"
+                    outs = [f"{wid}.{t}" for t, _ in norm_next(st, "")]
+                    if st.get("type") == "handoff" and isinstance(st.get("to"), str):
+                        outs.append(st["to"])
+                    graph[key] = outs
+            seen_all, stack = set(), [entry_ref]
+            while stack:
+                n = stack.pop()
+                if n in seen_all:
+                    continue
+                seen_all.add(n)
+                stack.extend(x for x in graph.get(n, []) if x in graph)
+            for key in graph:
+                if key not in seen_all:
+                    err("workflows/" + key.replace(".", ".yaml step `", 1) + "`", "not reachable from the system entry — a stale step")
+            exit_ref = m.get("exit")
+            if isinstance(exit_ref, str) and exit_ref in graph and exit_ref not in seen_all:
+                err("map.yaml", "`exit` is not reachable from `entry`")
 
     # handoff targets across workflows
     for wid, d in workflows.items():

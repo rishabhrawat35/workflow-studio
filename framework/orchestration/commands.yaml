@@ -1,0 +1,120 @@
+# Slash commands. Names follow GitHub Spec Kit where the meaning overlaps, so a
+# move to Spec Kit (or back) keeps the PM's muscle memory (Spec Kit >= 1.0 invokes
+# them as /speckit-<name>; the installer writes that layout). `entry: true`
+# commands create a record (all at define.intake, the one door); every other
+# command continues a record already at `enters`. `stub: true` commands only
+# explain that they are not part of this framework.
+commands:
+  speckit.constitution:
+    enters: define.intake
+    speckit_equivalent: speckit.constitution
+    does: state the architecture (their constitution) as the first request; sorted to Foundation, where the PM writes
+      or pastes the file and the glossary
+    entry: true
+  speckit.specify:
+    enters: define.intake
+    speckit_equivalent: speckit.specify
+    does: state a request; it is sorted and, for logic, discussed and drafted as a node
+    entry: true
+  speckit.clarify:
+    enters: define.write
+    speckit_equivalent: speckit.clarify
+    does: 'ask the open questions on the current draft: max three, one at a time, each with a recommended option'
+    entry: false
+  speckit.checklist:
+    enters: define.challenge
+    speckit_equivalent: speckit.checklist
+    does: 'challenge the draft node. Note: Spec Kit''s checklist writes a requirements checklist for the human to
+      tick; ours runs the challenger and returns findings'
+    entry: false
+  speckit.approve:
+    enters: define.approve
+    speckit_equivalent: none
+    does: the PM approves the logic and confirms the criteria
+    entry: false
+  speckit.plan:
+    enters: deliver.trace
+    speckit_equivalent: speckit.plan
+    does: trace affected code and components, then write the plan
+    entry: false
+  speckit.tasks:
+    enters: deliver.plan
+    speckit_equivalent: speckit.tasks
+    does: 're-plan: re-enters deliver.plan, which rewrites the plan and its task list (T001 [P] [node] grammar),
+      then challenge-plan runs again'
+    entry: false
+  speckit.analyze:
+    enters: deliver.challenge-plan
+    speckit_equivalent: speckit.analyze
+    does: challenge the plan with the criterion-to-task coverage table
+    entry: false
+  speckit.implement:
+    enters: deliver.execute
+    speckit_equivalent: speckit.implement
+    does: continue a record already at deliver.execute (approve-plan answered execute); refuses any other record
+    entry: false
+  speckit.converge:
+    enters: deliver.verify
+    speckit_equivalent: speckit.converge
+    does: verify against the criteria and route through passes
+    entry: false
+  speckit.accept:
+    enters: deliver.accept
+    speckit_equivalent: none
+    does: the PM uses the result or reads the evidence and answers
+    entry: false
+  speckit.bug.assess:
+    enters: define.intake
+    speckit_equivalent: speckit.bug.assess
+    does: report a bug; sorted as a fix when the violated criterion can be named; traced without touching code
+    entry: true
+  speckit.bug.fix:
+    enters: deliver.execute
+    speckit_equivalent: speckit.bug.fix
+    does: execute the approved fix plan
+    entry: false
+  speckit.bug.test:
+    enters: deliver.verify
+    speckit_equivalent: speckit.bug.test
+    does: verify the fix; verified only if the failing criterion now holds
+    entry: false
+  speckit.assess.intake:
+    enters: define.intake
+    speckit_equivalent: speckit.assess.intake
+    does: an idea, sorted like any request. Spec Kit's assess pipeline (research, shape, decide) has no equivalent
+      here; the discussion and the challenge do that work
+    entry: true
+  speckit.rule:
+    enters: define.intake
+    speckit_equivalent: none
+    does: ask for a change to one architecture rule; sorted to Foundation, where the decision behind the current
+      rule is brought forward
+    entry: true
+  speckit.status:
+    enters: define.intake
+    speckit_equivalent: none
+    does: 'where is everything: sorted as a question, answered from the queue'
+    entry: true
+  speckit.why:
+    enters: define.intake
+    speckit_equivalent: none
+    does: 'why does it behave this way: sorted as a question, answered from the decision log first'
+    entry: true
+  speckit.drop:
+    enters: define.intake
+    speckit_equivalent: none
+    does: 'stop a request: a queue instruction applied at answer, or a stop at the current gate'
+    entry: true
+  speckit.taskstoissues:
+    enters: none
+    speckit_equivalent: speckit.taskstoissues
+    entry: false
+    stub: true
+    does: 'not part of this framework: the change record with its task list is the issue; nothing is exported'
+  speckit.git.commit:
+    enters: none
+    speckit_equivalent: speckit.git.commit
+    entry: false
+    stub: true
+    does: 'not part of this framework: the commit happens at deliver.commit, after the PM accepts; nothing is committed
+      by hand'

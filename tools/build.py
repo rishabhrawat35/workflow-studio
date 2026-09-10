@@ -6,7 +6,7 @@ Writes:
   build/studio.artifact.html   same page without the <html>/<head>/<body>
                          wrapper, for publishing as a Claude artifact
 
-Refuses to build if tools/validate.py fails.
+Refuses to build if tools/validate.py fails. Also regenerates framework/steps.md via tools/docs.py.
 """
 import json
 import re
@@ -55,7 +55,7 @@ def main() -> int:
         encoding="utf-8",
     )
     print(f"built {OUT.name} and {OUT_ART.relative_to(ROOT)} with {len(wf_files)} workflow(s)")
-    return 0
+    return subprocess.run([sys.executable, str(ROOT / "tools" / "docs.py")]).returncode
 
 
 if __name__ == "__main__":

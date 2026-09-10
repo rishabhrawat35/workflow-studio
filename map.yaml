@@ -1,3 +1,14 @@
 # Workflow of workflows. See SCHEMA.md.
-# Every file in workflows/ must be listed in exactly one group.
-groups: []
+# entry: where the PM's input enters the whole system. exit: where the finished result leaves it.
+entry: define.intake
+exit: deliver.done
+groups:
+  - id: foundation
+    name: Foundation
+    workflows: [foundation]
+  - id: business-side
+    name: Business side
+    workflows: [define]
+  - id: delivery
+    name: Delivery
+    workflows: [deliver]
