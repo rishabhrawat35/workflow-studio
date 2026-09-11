@@ -13,6 +13,8 @@ later move either way is a file swap:
   gemini   .gemini/commands/speckit.<name>.toml   (description + prompt, {{args}})
 Templates live in framework/commands/speckit.<name>.md with `$ARGUMENTS` as the
 argument placeholder; the installer rewrites it per tool.
+`--with-archify` also installs the optional archify diagram skill (see
+framework/tools/archify_delta.py).
 """
 import argparse
 import re
@@ -48,6 +50,7 @@ def toml(name, meta, body):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--agent", required=True, choices=list(SKILL_DIRS) + ["gemini", "all"])
+    ap.add_argument("--with-archify", action="store_true", help="also install the archify diagram skill (npx skills add tt-a1i/archify -g)")
     a = ap.parse_args()
     if not SRC.exists():
         print("framework/commands not found; run from the product repository root")
@@ -69,6 +72,10 @@ def main() -> int:
             n += 1
         print(f"{ag}: {SKILL_DIRS.get(ag, '.gemini/commands')}/")
     print(f"installed {n} file(s); invoke as /speckit-<name> (Gemini: /speckit.<name>)")
+    if a.with_archify:
+        import subprocess
+        r = subprocess.run([sys.executable, str(Path(__file__).with_name("archify_delta.py")), "install"])
+        return r.returncode
     return 0
 
 

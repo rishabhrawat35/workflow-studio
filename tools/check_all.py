@@ -16,6 +16,7 @@ Stdlib only (plus PyYAML, which every tool here already needs).
 """
 import re
 import shutil
+import json
 import subprocess
 import sys
 import tempfile
@@ -121,6 +122,25 @@ def main() -> int:
             GOOD_DECISION.replace('"2026-09-09T14:32+05:30"', '"2026-09-09"').replace("nodes: [login]", "supersedes: D-0099"),
             encoding="utf-8")
         step("fixture: decisions_index refuses a broken log", [PY, str(FW_TOOLS / "decisions_index.py")], cwd=root, expect=1)
+
+    # optional: archify_delta refuses cleanly when the CLI is absent, and works when present
+    ad = FW_TOOLS / "archify_delta.py"
+    r = subprocess.run([PY, str(ad), "locate"], capture_output=True, text=True)
+    if r.returncode == 0:
+        with tempfile.TemporaryDirectory(prefix="workflow-studio-archify-") as tmp:
+            root = Path(tmp)
+            (root / "docs").mkdir()
+            base = {"schema_version": 1, "diagram_type": "architecture", "meta": {"title": "a"},
+                    "components": [{"id": "x", "type": "backend", "label": "X", "pos": [40, 40], "size": [120, 60]},
+                                   {"id": "y", "type": "database", "label": "Y", "pos": [240, 40], "size": [120, 60]}],
+                    "boundaries": [], "connections": [{"id": "xy", "from": "x", "to": "y"}]}
+            head = json.loads(json.dumps(base)); head["connections"] = []
+            (root / "before.json").write_text(json.dumps(base), encoding="utf-8")
+            (root / "docs" / "architecture.archify.json").write_text(json.dumps(head), encoding="utf-8")
+            step("optional: archify_delta compare reports a removal", [PY, str(ad), "compare", "before.json"], cwd=root, expect=2)
+    else:
+        print("== optional: archify_delta (skipped: archify CLI not installed on this machine)")
+        step("optional: archify_delta refuses without the CLI", [PY, str(ad), "locate"], expect=1)
 
     print("\nALL CHECKS PASSED")
     return 0

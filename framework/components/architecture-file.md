@@ -45,12 +45,15 @@ among the tools in the architecture file, the AI keeps
 `docs/architecture.archify.json` beside `architecture.md` and renders it to
 `docs/architecture.html` at `foundation.save` and at `deliver.plan`. At
 `deliver.plan` a change that adds, removes or rewires a component also
-produces an Architecture Delta (`archify compare architecture before.json
-after.json docs/architecture.delta.html --receipt docs/architecture.delta.json`)
+produces an Architecture Delta (`python3 framework/tools/archify_delta.py
+compare <before.json>`, which wraps `archify compare architecture` and writes
+`docs/architecture.delta.html` with its receipt `docs/architecture.delta.json`)
 of the architecture before and after, linked from the plan section, so the
 PM sees the structural effect at `approve-plan` without reading the trace;
 `deliver.challenge-plan` reads the receipt and reports any removal the plan
 does not name. The JSON is
 derived from `architecture.md` and `code/COMPONENTS.md`, never the other
 way round; the diagram is an aid, not a gate input, and its absence is not
-a finding. Node.js is required only for this option.
+a finding. Node.js is required only for this option; `archify_delta.py locate` finds the
+CLI or prints the install command, and `install_commands.py --with-archify`
+installs it with the slash commands.

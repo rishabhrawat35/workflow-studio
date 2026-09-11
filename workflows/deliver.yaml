@@ -52,11 +52,13 @@ steps:
       from memory.
     notes: >-
       Optional diagram (convention): when the architecture file names
-      archify as a tool, the plan also renders docs/architecture.archify.json
-      to docs/architecture.html and, for a change that touches components,
-      an Architecture Delta of before and after (docs/architecture.delta.html
-      with its receipt docs/architecture.delta.json), linked from the plan
-      section; the diagram is an aid for the PM at approve-plan, never a
+      archify as a tool, the plan also runs
+      `framework/tools/archify_delta.py render` on
+      docs/architecture.archify.json and, for a change that touches
+      components, `archify_delta.py compare <before.json>`, which writes
+      docs/architecture.delta.html with its receipt
+      docs/architecture.delta.json and lists every removal, linked from the
+      plan section; the diagram is an aid for the PM at approve-plan, never a
       gate input, and its absence is not a finding.
     next: [challenge-plan]
 
@@ -74,9 +76,9 @@ steps:
       empty row is a finding; a plan that alters an active decision without
       bringing it forward; and any code words in the plan section. When the
       plan carries an archify Architecture Delta (see the plan step's
-      notes), the pass also reads its receipt (docs/architecture.delta.json)
-      and reports every component or connection marked removed that the
-      plan section does not name. Findings are fixed before the PM sees it.
+      notes), the pass also runs `framework/tools/archify_delta.py compare`
+      (exit 2 lists the removals) and reports every component or
+      connection marked removed that the plan section does not name. Findings are fixed before the PM sees it.
     notes: >-
       Non-trivial means the change touches existing code or more than one
       criterion. A challenge that finds nothing on non-trivial work is run
