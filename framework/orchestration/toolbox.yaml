@@ -1,0 +1,18 @@
+# Optional per-step toolbox for an installed harness plugin (ECC, github.com/affaan-m/ECC,
+# installed with `install_commands.py --with-ecc`: profile minimal, target claude, hooks off).
+# The runner (framework/tools/run.py) adds the step's row to the prompt only when
+# architecture.md in the product root contains `enabled_when`; otherwise the prompt
+# never mentions the toolbox. `never` is listed in every prompt where the toolbox is on.
+# `orchestrate.py check` validates that every key under `steps` is a real step.
+enabled_when: "ECC"
+never: [/ecc:plan, /save-session, /resume-session, /learn-eval, hooks]
+steps:
+  deliver.execute:
+    use: [tdd-workflow, build-error-resolver]
+    note: the task list in the record is the plan; the toolbox never replaces it, only the way each task is built
+  deliver.challenge-plan:
+    use: [code-reviewer]
+  deliver.verify:
+    use: [tdd-workflow, code-reviewer, security-reviewer, <language>-reviewer]
+    passes: separate fresh sessions, one per reviewer, each appending its findings to the record
+    note: <language> is the language architecture.md names for the code side (python-reviewer, typescript-reviewer, ...)

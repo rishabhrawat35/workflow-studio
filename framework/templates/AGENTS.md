@@ -20,6 +20,7 @@ files cannot: where things are here, the exact commands, and how to resume.
 - Before anything: `python3 framework/tools/orchestrate.py check` must print CLOSED.
 - To act: `python3 framework/tools/orchestrate.py next <record>` tells you the step, your role, your inputs and the legal exits. Do that step; move with `advance --to <exit> --when "<condition>"`. Never pick a step yourself.
 - To resume: `next` on the record in flight (see `changes/QUEUE.md`). Never start from scratch.
+- One command per request: `python3 framework/tools/run.py <record>` (`/speckit-run`) runs every AI step in a fresh process and stops at the next PM step (exit 3) with the `advance --answer` command to run; the PM answers, then runs it again.
 
 ## Decisions
 - At every gate answer, drop, saved rule with an alternative, and AI choice that adds a dependency or a stored data shape: write `decisions/D-<nnnn>-<slug>.md` with an "Instead of …" line (format in `framework/components/decision-log.md`). No alternative, no decision file.

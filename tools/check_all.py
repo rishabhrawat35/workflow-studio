@@ -12,12 +12,18 @@ Runs, in order, and stops at the first failure (exit code 1):
   6. the product-repository generators on a throwaway fixture tree:
        logic_index.py, components_index.py, decisions_index.py, install_commands.py (all agents, twice)
      the good fixture must pass; a fixture with a broken decision log must be refused.
+  7. the runner (framework/tools/run.py) with the fake harness on the same fixture: a record
+     started at define.intake is driven from define.sort through every PM stop (exit 3, a
+     scripted answer each time) to deliver.done (exit 0); a stalled step is retried once,
+     a step that never moves exits 4, a harness that answers the PM gate itself exits 4;
+     run.py --dry-run and --check-harness fake.
 Stdlib only (plus PyYAML, which every tool here already needs).
 """
 from __future__ import annotations
 import re
 import shutil
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -77,6 +83,66 @@ def fixture(root: Path) -> None:
     (root / "decisions" / "D-0001-sessions.md").write_text(GOOD_DECISION, encoding="utf-8")
     shutil.copytree(ROOT / "framework" / "commands", root / "framework" / "commands")
     shutil.copytree(FW_TOOLS, root / "framework" / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "framework" / "orchestration", root / "framework" / "orchestration")
+    shutil.copytree(ROOT / "workflows", root / "framework" / "workflows")
+    shutil.copy(ROOT / "framework" / "templates" / "AGENTS.md", root / "AGENTS.md")
+    # names the toolbox's `enabled_when`, so the runner's toolbox rows (and the separate verify passes) are exercised
+    (root / "architecture.md").write_text("# Architecture\n\nTools: python 3, pytest, ECC (toolbox).\nRun: python3 -m app\n", encoding="utf-8")
+
+
+def runner_fixture(root: Path) -> None:
+    """The runner with the fake harness: define.sort → every PM stop → deliver.done."""
+    orch, run = str(root / "framework" / "tools" / "orchestrate.py"), str(root / "framework" / "tools" / "run.py")
+    rec = "changes/2026-09-11-1-runner.md"
+    fake = [PY, run, rec, "--harness", "fake"]
+    step("runner: check-harness fake", [PY, run, "--check-harness", "--harness", "fake"], cwd=root)
+    step("runner: start + the PM's intake answer", [PY, orch, "start", rec, "--command", "speckit.specify"], cwd=root)
+    step("runner: intake answer", [PY, orch, "advance", rec, "--to", "sort", "--answer", "members can cancel within 7 days"], cwd=root)
+    step("runner: dry run at define.sort", [PY, run, rec, "--harness", "fake", "--dry-run"], cwd=root)
+    stops = [("define.discuss", ["--to", "write", "--when", "1", "--answer", "a cancel page"]),
+             ("define.approve", ["--to", "commit", "--when", "3", "--answer", "yes"]),
+             ("deliver.approve-plan", ["--to", "execute", "--when", "1", "--answer", "execute"]),
+             ("deliver.accept", ["--to", "commit", "--when", "1", "--answer", "accepted"])]
+    for pm_step, answer in stops:
+        step(f"runner: run to the PM stop {pm_step} (exit 3)", fake, cwd=root, expect=3)
+        text = (root / rec).read_text(encoding="utf-8")
+        if f"step: {pm_step}" not in text:
+            fail(f"runner: the record is not at {pm_step}")
+        step(f"runner: PM answers at {pm_step}", [PY, orch, "advance", rec] + answer, cwd=root)
+    step("runner: run to deliver.done (exit 0)", fake, cwd=root)
+    text = (root / rec).read_text(encoding="utf-8")
+    for needle in ("step: deliver.done", "## Findings — define.challenge", "## Findings — deliver.verify", "- [x] T001", "[security-reviewer]"):
+        if needle not in text:
+            fail(f"runner: the record lacks `{needle}`")
+    logs = sorted(p.name for p in (root / "changes" / "runs" / "2026-09-11-1-runner").glob("*.log"))
+    if len(logs) < 18 or "run.md" not in {p.name for p in (root / "changes" / "runs" / "2026-09-11-1-runner").iterdir()}:
+        fail(f"runner: expected one log per step and run.md, got {logs}")
+    run_md = (root / "changes" / "runs" / "2026-09-11-1-runner" / "run.md").read_text(encoding="utf-8")
+    if "deliver.verify | Verifier | fake" not in run_md or "(4 sessions)" not in run_md:
+        fail("runner: run.md does not show the four separate verify sessions")
+    # a stalled step is retried once; a step that never moves is exit 4
+    rec2 = "changes/2026-09-11-2-stall.md"
+    step("runner: second record", [PY, orch, "start", rec2, "--command", "speckit.specify"], cwd=root)
+    step("runner: intake answer", [PY, orch, "advance", rec2, "--to", "sort", "--answer", "x"], cwd=root)
+    env = dict(os.environ, FAKE_HARNESS_STALL="define.sort")
+    r = subprocess.run([PY, run, rec2, "--harness", "fake"], cwd=root, capture_output=True, text=True, env=env)
+    log = (root / "changes" / "runs" / "2026-09-11-2-stall" / "1-define.sort.log").read_text(encoding="utf-8")
+    if r.returncode != 3 or "## attempt 2" not in log or "previous attempt did not move the record" not in log:
+        fail(f"runner: a stalled step was not retried once (exit {r.returncode})")
+    print("== runner: a stalled define.sort was retried once and moved (exit 3 at define.discuss)")
+    env = dict(os.environ, FAKE_HARNESS_STALL="always")
+    step("runner: PM answers", [PY, orch, "advance", rec2, "--to", "write", "--when", "1", "--answer", "y"], cwd=root)
+    r = subprocess.run([PY, run, rec2, "--harness", "fake"], cwd=root, capture_output=True, text=True, env=env)
+    if r.returncode != 4 or "did not move the record after a retry" not in r.stdout:
+        fail(f"runner: a step that never moves must exit 4 (got {r.returncode}: {r.stdout[-300:]})")
+    print("== runner: a step that never moves exits 4 with the log path")
+    # a harness that answers the PM step it landed on is refused: the runner checks the history, not the step
+    env = dict(os.environ, FAKE_HARNESS_OVERSTEP="define.challenge")
+    r = subprocess.run([PY, run, rec2, "--harness", "fake"], cwd=root, capture_output=True, text=True, env=env)
+    if r.returncode != 4 or "answered the PM step define.approve itself" not in r.stdout:
+        fail(f"runner: a harness that answered the PM gate itself must exit 4 (got {r.returncode}: {r.stdout[-300:]})")
+    print("== runner: a harness that answered define.approve itself exits 4 (the gate is not skipped silently)")
+    step("runner: orchestrate start refuses the meta command", [PY, orch, "start", rec2, "--command", "speckit.run"], cwd=root, expect=1)
 
 
 def check_studio_html() -> None:
@@ -123,6 +189,7 @@ def main() -> int:
             GOOD_DECISION.replace('"2026-09-09T14:32+05:30"', '"2026-09-09"').replace("nodes: [login]", "supersedes: D-0099"),
             encoding="utf-8")
         step("fixture: decisions_index refuses a broken log", [PY, str(FW_TOOLS / "decisions_index.py")], cwd=root, expect=1)
+        runner_fixture(root)
 
     # optional: archify_delta refuses cleanly when the CLI is absent, and works when present
     ad = FW_TOOLS / "archify_delta.py"

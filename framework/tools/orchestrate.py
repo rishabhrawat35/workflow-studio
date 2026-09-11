@@ -12,8 +12,9 @@ Usage (from the product repository root, with framework/ copied in):
   orchestrate.py start <record.md> --command speckit.<name> [--lane small|full]
       create a record at an ENTRY command's step (define.intake). Every other
       command is a `next` on a record already at that step; `start` refuses it.
-  orchestrate.py next <record.md>
-      what happens now: step, mode, role, inputs, framing, legal exits, last edges
+  orchestrate.py next <record.md> [--json]
+      what happens now: step, mode, role, inputs, framing, legal exits, last edges;
+      --json prints the same as one JSON object for the runner (framework/tools/run.py)
   orchestrate.py advance <record.md> --to <step|bare step id|index|prefix> [--when "<condition|index>"]
                         [--answer "<PM's answer>"] [--lane small|full]
       move the record along one edge. Refuses: an exit not in the YAML; a
@@ -30,9 +31,16 @@ Findings block: the AI writes `## Findings — <step>` into the record body
 before leaving a challenger step; a body line "none" under it means zero
 findings. PM answers are recorded from --answer into history.
 Exit code 1 on any refusal, so a wrapper can stop.
+
+A command in commands.yaml may carry `meta: true` with `enters: current`: it
+wraps the runner and enters whatever step the record is at (speckit.run);
+`start` refuses it and `check` exempts it from the enters rule only.
+`framework/orchestration/toolbox.yaml`, when present, is validated by `check`:
+every key under `steps` must be a real step.
 """
 from __future__ import annotations
 import argparse
+import json
 import re
 import sys
 from datetime import datetime, timezone
@@ -69,6 +77,33 @@ def load_system():
     roles = load_yaml(ORCH / "roles.yaml")
     commands = load_yaml(ORCH / "commands.yaml")["commands"]
     return workflows, roles, commands
+
+
+def load_toolbox():
+    """framework/orchestration/toolbox.yaml, or None when the product has none."""
+    p = ORCH / "toolbox.yaml"
+    return load_yaml(p) if p.exists() else None
+
+
+def check_toolbox(workflows, toolbox) -> list[str]:
+    problems = []
+    if toolbox is None:
+        return problems
+    all_steps = {f"{wid}.{s['id']}" for wid, w in workflows.items() for s in w["steps"]}
+    if not isinstance(toolbox.get("enabled_when"), str) or not toolbox["enabled_when"].strip():
+        problems.append("toolbox.yaml: `enabled_when` must be a non-empty string searched in architecture.md")
+    if not isinstance(toolbox.get("never"), list):
+        problems.append("toolbox.yaml: `never` must be a list")
+    steps = toolbox.get("steps") or {}
+    if not isinstance(steps, dict):
+        problems.append("toolbox.yaml: `steps` must be a mapping of step → {use, note, passes}")
+        return problems
+    for ref, row in steps.items():
+        if ref not in all_steps:
+            problems.append(f"toolbox.yaml: unknown step {ref}")
+        if not isinstance(row, dict) or not isinstance(row.get("use"), list) or not row["use"]:
+            problems.append(f"toolbox.yaml: {ref} needs a non-empty `use` list")
+    return problems
 
 
 def step_of(workflows, ref):
@@ -133,6 +168,12 @@ def check(workflows, roles, commands) -> list[str]:
         if cfg.get("role") not in roles["roles"]:
             problems.append(f"roles.yaml: {ref} names unknown role {cfg.get('role')}")
     for name, c in commands.items():
+        if c.get("meta"):
+            if c.get("enters") != "current" or c.get("entry"):
+                problems.append(f"commands.yaml: {name} is meta and must have `enters: current` and no `entry`")
+            if not name.startswith("speckit."):
+                problems.append(f"commands.yaml: {name} must carry the speckit. prefix")
+            continue
         if "enters" not in c:
             problems.append(f"commands.yaml: {name} has no `enters` step")
             continue
@@ -237,6 +278,47 @@ def resolve_when(ex, tgt, when):
     return canon if norm(canon) == norm(when) or norm(canon).startswith(norm(when)) and len(norm(when)) >= 6 else None
 
 
+def template_for(commands, ref):
+    """The command that enters this step and its template file, if any (entry commands first, else the first named)."""
+    hits = [n for n, c in commands.items() if c.get("enters") == ref]
+    if not hits:
+        return None, None
+    name = hits[0]
+    path = FW / "commands" / f"{name}.md"
+    return name, (str(path.relative_to(ROOT)) if path.exists() else None)
+
+
+def next_info(meta, body, workflows, roles, commands) -> dict:
+    """Everything `next` knows, as one dict (the runner reads this as JSON)."""
+    ref = meta["step"]
+    w, s = step_of(workflows, ref)
+    cfg = roles["steps"][ref]
+    info = {
+        "step": ref, "title": s["title"], "type": s.get("type", "step"),
+        "mode": cfg["mode"], "role": cfg["role"], "role_card": roles["roles"].get(cfg["role"]),
+        "waiting_on": meta.get("waiting_on"), "lane": meta.get("lane"), "since": meta.get("since"),
+        "closed": s.get("type") == "end",
+        "inputs": list(cfg.get("inputs") or []),
+        "what": (s.get("what") or "").strip(), "output": (s.get("output") or "").strip(),
+        "notes": (s.get("notes") or "").strip(), "input": (s.get("input") or "").strip(),
+        "failed_passes": int(meta.get("failed_passes", 0)), "rerun_count": int(meta.get("rerun_count", 0)),
+        "exits": [{"index": i, "to": tgt, "when": None if when == "handoff" else when}
+                  for i, (tgt, when) in enumerate(exits(workflows, ref), 1)],
+        # the runner checks every move against these: how many edges the record has taken, and the last few
+        "edges": len(meta.get("history") or []),
+        "last_edges": list(meta.get("history") or [])[-5:],
+    }
+    name, path = template_for(commands, ref)
+    info["command"] = name
+    info["template"] = path
+    if cfg["mode"] == "challenger":
+        fr = cfg["framings"]
+        info["framing"] = fr[min(int(meta.get("rerun_count", 0)), len(fr) - 1)]
+        present, count = findings_for(body, ref)
+        info["findings"] = {"present": present, "count": count}
+    return info
+
+
 def cmd_next(args, workflows, roles, commands):
     meta, body = read_record(Path(args.record))
     ref = meta.get("step")
@@ -248,6 +330,9 @@ def cmd_next(args, workflows, roles, commands):
         return 1
     w, s = step_of(workflows, ref)
     cfg = roles["steps"][ref]
+    if getattr(args, "json", False):
+        print(json.dumps(next_info(meta, body, workflows, roles, commands), ensure_ascii=False, indent=2))
+        return 0
     print(f"step:     {ref} — {s['title']}")
     print(f"mode:     {meta.get('mode')}   role: {cfg['role']}   lane: {meta.get('lane')}   waiting on: {meta.get('waiting_on')} since {meta.get('since')}")
     print(f"inputs:   {', '.join(cfg['inputs'])}")
@@ -356,6 +441,9 @@ def cmd_start(args, workflows, roles, commands):
         print(f"unknown command {args.command}; known: {', '.join(commands)}")
         return 1
     meta, body = read_record(path) if path.exists() else ({}, f"# {path.stem}\n\n## Request\n\n")
+    if c.get("meta"):
+        print(f"refused: {args.command} is a meta command (it runs the record at its current step); use `python3 framework/tools/run.py {args.record}`")
+        return 1
     if not c.get("entry"):
         if meta.get("step") == c["enters"]:
             print(f"{args.command} continues the record at {c['enters']}:")
@@ -398,13 +486,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check")
-    p = sub.add_parser("next"); p.add_argument("record")
+    p = sub.add_parser("next"); p.add_argument("record"); p.add_argument("--json", action="store_true", help="one JSON object for the runner")
     p = sub.add_parser("advance"); p.add_argument("record"); p.add_argument("--to", required=True); p.add_argument("--when"); p.add_argument("--answer"); p.add_argument("--lane", choices=["small", "full"])
     p = sub.add_parser("start"); p.add_argument("record"); p.add_argument("--command", required=True); p.add_argument("--lane", choices=["small", "full"])
     p = sub.add_parser("rerun"); p.add_argument("record")
     args = ap.parse_args()
     workflows, roles, commands = load_system()
-    problems = check(workflows, roles, commands)
+    toolbox = load_toolbox()
+    problems = check(workflows, roles, commands) + check_toolbox(workflows, toolbox)
     if args.cmd == "check":
         if problems:
             print(f"NOT CLOSED — {len(problems)} problem(s):")
@@ -412,7 +501,13 @@ def main() -> int:
                 print("  -", x)
             return 1
         n = sum(len(w["steps"]) for w in workflows.values())
-        print(f"CLOSED — {n} steps, every one mapped to a role and mode; {len(commands)} commands, every one entering a real non-routing step")
+        meta_n = sum(1 for c in commands.values() if c.get("meta"))
+        line = f"CLOSED — {n} steps, every one mapped to a role and mode; {len(commands) - meta_n} commands, every one entering a real non-routing step"
+        if meta_n:
+            line += f"; {meta_n} meta command entering the record's current step"
+        if toolbox is not None:
+            line += f"; toolbox: {len(toolbox.get('steps') or {})} step row(s)"
+        print(line)
         return 0
     if problems:
         print("refused: the system is not closed; run `check`")

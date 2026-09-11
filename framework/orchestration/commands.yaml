@@ -4,6 +4,7 @@
 # commands create a record (all at define.intake, the one door); every other
 # command continues a record already at `enters`. Two commands wrap a tool instead of a step:
 # taskstoissues (deliver.execute or later) and git.commit (deliver.commit only); each checks the record's step itself.
+# One command is `meta: true` with `enters: current`: speckit.run wraps the runner and enters the record's current step.
 commands:
   speckit.constitution:
     enters: define.intake
@@ -119,3 +120,11 @@ commands:
     does: 'the one code commit of deliver.commit (framework/tools/commit.py): regenerates the indexes, stages the code,
       tests, nodes, decisions and record of this delivery only, commits, and advances the record to done; refuses any
       record not at deliver.commit, so nothing is committed before the PM accepts'
+  speckit.run:
+    enters: current
+    meta: true
+    speckit_equivalent: none
+    entry: false
+    does: 'run this record to the next PM stop (framework/tools/run.py): the runner starts every AI step itself in a
+      fresh harness process, advances handoffs, and stops only at a PM step (exit 3); ours, not Spec Kit''s. `meta: true`
+      because it enters whatever step the record is at; `start` refuses it'

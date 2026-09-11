@@ -1,0 +1,27 @@
+# Orchestration layer 2 — how framework/tools/run.py spawns one AI process per step.
+# One entry per harness. `command` is the executable; `args` is the argument
+# template ({prompt} = the assembled prompt, {tools} = the allowed-tools list
+# joined with commas); `allowed_tools` are ADDED to the runner's built-in list
+# for claude (Read, Edit, Write, Glob, Grep and the Bash patterns the framework
+# needs); `extra_flags` are appended as given. A flag that skips every
+# permission (--dangerously-skip-permissions, --dangerously-bypass-approvals-and-sandbox,
+# --yolo) is refused by the runner wherever it appears.
+harnesses:
+  claude:
+    command: claude
+    args: ["-p", "{prompt}", "--output-format", "text", "--allowedTools", "{tools}"]
+    allowed_tools: []          # e.g. "Bash(npm run *)" for a product whose tests run through npm scripts
+    extra_flags: []
+    version_flag: --version
+  codex:
+    command: codex
+    args: ["exec", "{prompt}"]
+    # the equivalent of claude's tool list: a sandbox that may write the working tree, no network, no approvals bypass
+    extra_flags: ["--sandbox", "workspace-write"]
+    version_flag: --version
+  fake:
+    # a stand-in for tests: writes a minimal valid output block and calls advance to the happy-path exit
+    command: python3
+    args: ["framework/tools/fake_harness.py", "{prompt}"]
+    extra_flags: []
+    version_flag: --version

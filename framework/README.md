@@ -29,7 +29,10 @@ disagrees with `../workflows/*.yaml`, the document is wrong and gets fixed.
    Code) picks the framework up on entry; fill in the exact commands.
 8. `orchestration/` — layer 1: `roles.yaml` (step → role, mode, inputs,
    framings), `commands.yaml` (slash commands, Spec Kit names), and its
-   README. `tools/orchestrate.py` is the only thing that moves a record;
+   README; layer 2: `harness.yaml` (how `tools/run.py` spawns a harness)
+   and `toolbox.yaml` (optional per-step plugin skills). `tools/orchestrate.py`
+   is the only thing that moves a record; `tools/run.py` (`/speckit-run`)
+   runs every AI step in a fresh process and stops at the PM steps;
    `tools/install_commands.py` installs the commands per AI tool;
    `tools/tasks_to_issues.py` (`/speckit-taskstoissues`, from
    `deliver.execute` on) mirrors a record's task list as GitHub issues, and
@@ -158,6 +161,19 @@ there is no waiting copy.
 Nothing reaches `execute` without a PM yes on a plan; nothing is saved
 before the PM approves it; nothing is done that the PM has not seen work
 or seen evidence for.
+
+**One command per request.** `python3 framework/tools/run.py <record>`
+(`/speckit-run`) walks the record from wherever it is: every AI step in a
+fresh harness process, every handoff advanced, until a PM step, where it
+prints the question and the `advance --answer` command and exits 3. For an
+ordinary change the PM is stopped at `define.discuss` and then at the three
+gates, `define.approve`, `deliver.approve-plan` and `deliver.accept`
+(`define.intake` is answered when the record is started, before the first
+run); after `accepted` the same command runs `commit → was-rule → done` and
+exits 0. The runner checks every move against the record's history: a step
+whose front matter was edited by hand, a harness that answered a PM step
+itself, or one that ran on into the next step stops the run (exit 4).
+See `orchestration/README.md`, "Layer 2: the runner".
 
 ## When in doubt (from the workflows)
 
