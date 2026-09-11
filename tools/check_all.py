@@ -209,6 +209,17 @@ def main() -> int:
         step("fixture: decisions_index refuses a broken log", [PY, str(FW_TOOLS / "decisions_index.py")], cwd=root, expect=1)
         runner_fixture(root)
 
+    # new_product.py: one-command bootstrap must produce a CLOSED product folder and refuse a non-empty one
+    with tempfile.TemporaryDirectory(prefix="workflow-studio-newproduct-") as tmp:
+        dest = Path(tmp) / "p"
+        step("new_product: bootstrap", [PY, str(ROOT / "tools" / "new_product.py"), str(dest), "--agent", "claude", "--no-git", "--run", "python3 -m app", "--test", "python3 -m pytest"])
+        for must in ("framework/tools/orchestrate.py", "framework/workflows/define.yaml", "AGENTS.md", "CLAUDE.md", "architecture.md", "changes/QUEUE.md", ".claude/skills/speckit-specify/SKILL.md"):
+            if not (dest / must).exists():
+                fail(f"new_product: {must} missing")
+        if "python3 -m pytest" not in (dest / "AGENTS.md").read_text(encoding="utf-8"):
+            fail("new_product: AGENTS.md placeholders not filled")
+        step("new_product: refuses a non-empty folder", [PY, str(ROOT / "tools" / "new_product.py"), str(dest), "--agent", "claude"], expect=1)
+
     # optional: archify_delta refuses cleanly when the CLI is absent, and works when present
     ad = FW_TOOLS / "archify_delta.py"
     r = subprocess.run([PY, str(ad), "locate"], capture_output=True, text=True)

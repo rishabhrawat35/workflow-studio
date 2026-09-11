@@ -98,20 +98,42 @@ No package: a product repository holds a copy of `framework/`. Requirements:
 | one of the five AI tools in the table below | runs the slash commands |
 | `gh` (optional) | serves only `/speckit-taskstoissues` |
 
-### Linux and macOS
+### One command creates a product folder
+
+`tools/new_product.py` creates the folder, copies `framework/` and the workflows, fills `AGENTS.md` and `CLAUDE.md` with the two commands you give it, writes a starter `architecture.md`, installs the slash commands for your AI tool, and proves the result with `orchestrate.py check`. Spec Kit itself is not installed; the framework only reuses its command names. Run once, from any folder:
 
 ```bash
 pip install pyyaml
+python3 ~/Downloads/workflow-studio/tools/new_product.py ~/Downloads/my-product --agent claude --run "python3 -m app" --test "python3 -m pytest"
+```
+
+```
+created /Users/rira/Downloads/my-product with framework/, framework/workflows/, AGENTS.md, CLAUDE.md, architecture.md, changes/
+git: initialised
+claude: .claude/skills/
+installed 22 file(s); invoke as /speckit-<name> (Gemini: /speckit.<name>)
+CLOSED — 51 steps, every one mapped to a role and mode; 21 commands, every one entering a real non-routing step; 1 meta command entering the record's current step; toolbox: 3 step row(s)
+
+Next:
+  1. Complete architecture.md (or answer /speckit-constitution in your AI tool).
+  2. Open your AI tool in /Users/rira/Downloads/my-product and type: /speckit-specify <what the product should do, in your words>
+  3. Or from a terminal: python3 framework/tools/orchestrate.py start changes/<date>-1-<slug>.md --command speckit.specify
+```
+
+Two optional flags add the toolboxes described later: `--with-archify` installs the architecture-diagram skill (Node.js 18 or later), and `--with-ecc` installs the ECC reviewers for the verify step, hooks off. The command refuses a folder that is not empty.
+
+<details><summary>The same steps by hand</summary>
+
+```bash
 mkdir my-product && cd my-product && git init
 cp -r ~/Downloads/workflow-studio/framework .
 cp -r ~/Downloads/workflow-studio/workflows framework/
 cp framework/templates/AGENTS.md framework/templates/CLAUDE.md .
+python3 framework/tools/install_commands.py --agent claude
 python3 framework/tools/orchestrate.py check
 ```
 
-```
-CLOSED — 51 steps, every one mapped to a role and mode; 21 commands, every one entering a real non-routing step; 1 meta command entering the record's current step; toolbox: 3 step row(s)
-```
+</details>
 
 ### Slash commands for one AI tool
 
@@ -134,11 +156,11 @@ installed 22 file(s); invoke as /speckit-<name> (Gemini: /speckit.<name>)
 | Gemini CLI | `--agent gemini` | `.gemini/commands/speckit.<name>.toml` | `/speckit.<name>` |
 | Cursor | `--agent cursor` | `.cursor/skills/speckit-<name>/SKILL.md` | `/speckit-<name>` |
 
-`--agent all` installs all five layouts, 110 files. The PM fills in the two commands left open in `AGENTS.md`: run the product, run the tests.
+`--agent all` installs all five layouts, 110 files. `new_product.py` fills the two commands in `AGENTS.md` from `--run` and `--test`; by hand, the PM fills them in.
 
 ## Quickstart
 
-1. Install the framework and one tool's commands ([Installation](#installation)).
+1. Create the product folder with one command ([Installation](#installation)).
 2. Describe the architecture with `/speckit-constitution Node 20 + Fastify backend under code/backend, Postgres on Supabase. Run with npm run dev. Never touch migrations/ by hand.`; then write the glossary.
 3. State a request with `/speckit-specify Members can cancel a policy within 7 days of purchase and get the full premium back, as long as no claim was filed.`; the AI stops at `define.approve` with the challenged draft.
 4. Approve the logic with `/speckit-approve yes`; the node is saved under `logic/`.
