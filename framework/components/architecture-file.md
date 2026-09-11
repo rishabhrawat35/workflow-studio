@@ -37,3 +37,17 @@ from another product. Never edit it except to write an accepted rule at
 The first thing that exists. Constrains everything written after it,
 including how code is organised into systems and components. A proposed
 rule is the only input to Deliver besides a change record from Define.
+
+## Optional diagram (convention)
+When the PM lists archify (github.com/tt-a1i/archify, an agent skill
+that renders a typed JSON description into a self-contained HTML diagram)
+among the tools in the architecture file, the AI keeps
+`docs/architecture.archify.json` beside `architecture.md` and renders it to
+`docs/architecture.html` at `foundation.save` and at `deliver.plan`. At
+`deliver.plan` a change that adds, removes or rewires a component also
+produces an Architecture Delta (archify `compare`) of the architecture
+before and after, linked from the plan section, so the PM sees the
+structural effect at `approve-plan` without reading the trace. The JSON is
+derived from `architecture.md` and `code/COMPONENTS.md`, never the other
+way round; the diagram is an aid, not a gate input, and its absence is not
+a finding. Node.js is required only for this option.

@@ -50,6 +50,13 @@ steps:
       documentation consulted as Decision / Rationale / Alternatives with
       sources, so the code is built the way those tools are used today, not
       from memory.
+    notes: >-
+      Optional diagram (convention): when the architecture file names
+      archify as a tool, the plan also renders docs/architecture.archify.json
+      to docs/architecture.html and, for a change that touches components,
+      an Architecture Delta of before and after, linked from the plan
+      section; the diagram is an aid for the PM at approve-plan, never a
+      gate input, and its absence is not a finding.
     next: [challenge-plan]
 
   - id: challenge-plan

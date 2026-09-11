@@ -549,6 +549,8 @@ Produces: In the record: the plan section (for the PM) and the AI section (task 
 
 Plan section, for the PM, no code inside: what will change for the user, what will not change, the logic delta for a change, what happens to any existing stored data, which existing components are reused and which new ones are created (by their plain names), anything the PM must supply before work can start (a key, an account, a file), any active decision this plan would alter (brought forward with its situation and reasons), and that the result will be verified against the confirmed acceptance criteria of every node it touches; in the small lane this is one paragraph. AI section: the task list in the form "- [ ] T001 [P] [node-id] what, in which file", grouped in the phases Setup, Foundational, one phase per node, Polish, where [P] marks a task that touches different files from every unfinished task and can run alongside them; and, per tool choice, the current documentation consulted as Decision / Rationale / Alternatives with sources, so the code is built the way those tools are used today, not from memory.
 
+Notes: Optional diagram (convention): when the architecture file names archify as a tool, the plan also renders docs/architecture.archify.json to docs/architecture.html and, for a change that touches components, an Architecture Delta of before and after, linked from the plan section; the diagram is an aid for the PM at approve-plan, never a gate input, and its absence is not a finding.
+
 Comes from:
 - `deliver.trace` Trace the affected code and reusable components
 - `deliver.approve-plan` PM approves the plan? — when the plan needs revising (the logic and the rule stand)
