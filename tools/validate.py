@@ -4,6 +4,7 @@
 Usage:  python3 tools/validate.py            (run from repo root)
 Exit code 0 = clean, 1 = errors printed.
 """
+from __future__ import annotations
 import re
 import sys
 from pathlib import Path

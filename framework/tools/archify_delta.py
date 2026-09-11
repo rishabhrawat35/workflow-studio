@@ -22,6 +22,7 @@ Usage, from the product repository root:
 The archify CLI is looked up at ARCHIFY_CLI, then in the skill folders
 ~/.agents/skills/archify, ~/.claude/skills/archify, ~/.config/opencode/skills/archify.
 """
+from __future__ import annotations
 import argparse
 import json
 import os

@@ -11,6 +11,7 @@ rejected alternative ("Instead of …"); resources present for AI decisions;
 no empty section; and, when git is present, no change to an existing
 decision file except adding `superseded_by`.
 """
+from __future__ import annotations
 import re
 import subprocess
 import sys

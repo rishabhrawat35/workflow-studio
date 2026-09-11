@@ -31,6 +31,7 @@ before leaving a challenger step; a body line "none" under it means zero
 findings. PM answers are recorded from --answer into history.
 Exit code 1 on any refusal, so a wrapper can stop.
 """
+from __future__ import annotations
 import argparse
 import re
 import sys

@@ -14,6 +14,7 @@ Runs, in order, and stops at the first failure (exit code 1):
      the good fixture must pass; a fixture with a broken decision log must be refused.
 Stdlib only (plus PyYAML, which every tool here already needs).
 """
+from __future__ import annotations
 import re
 import shutil
 import json
