@@ -82,6 +82,7 @@ FORBIDDEN_FLAGS = {"--dangerously-skip-permissions", "--dangerously-bypass-appro
                    "danger-full-access"}
 FORBIDDEN_TOOLS = {"bash", "bash(*)", "bash(**)", "bash(*:*)", "bash( *)"}  # a shell entry that allows every command
 TAIL = 40
+STATUS_EVERY = 10  # seconds between refreshes of the live status line on stderr
 EXIT_PM, EXIT_STUCK, EXIT_INTERRUPTED = 3, 4, 130
 
 
@@ -179,15 +180,38 @@ def toolbox_for(step: str) -> tuple[dict, list]:
     return dict((tb.get("steps") or {}).get(step) or {}), list(tb.get("never") or [])
 
 
+PROCEDURE_WORDS = ("check", "start", "next", "advance", "Repeat")  # a numbered template line naming these is the runner's job
+
+
 def template_body(info: dict, record: str) -> str:
+    """The template's role and intent lines only: its numbered procedure (`check`, `start`, `next`, `advance`,
+    "Repeat 3–4") is what the runner already did and would contradict the contract, so those lines are dropped."""
     if not info.get("template"):
         return ""
     text = (ROOT / info["template"]).read_text(encoding="utf-8")
     m = re.match(r"^---\s*\n.*?\n---\s*\n(.*)$", text, re.S)  # drop the front matter, keep the body
     body = (m.group(1) if m else text).strip()
+    kept = [l for l in body.splitlines()
+            if not (re.match(r"^\s*\d+\.\s", l) and any(w in l for w in PROCEDURE_WORDS))]
+    body = re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
     # the templates are written for a person invoking the slash command; under the runner there is no PM note
     body = body.replace("`$ARGUMENTS`, if given, is the PM's note for this step.", "The PM left no note for this step; the runner started it.")
     return body.replace("$ARGUMENTS", record)
+
+
+NO_CHANGE = ("no change", "the draft stands", "unchanged")  # a PM answer that re-submits the draft as it is
+UNCHANGED_STEPS = {"define.write", "deliver.plan"}  # the Writer/Planner steps a PM edge re-enters
+
+
+def pm_said_no_change(info: dict) -> bool:
+    """The edge that entered this step carried a PM answer starting with "No change" / "the draft stands" / "unchanged"."""
+    if info.get("step") not in UNCHANGED_STEPS:
+        return False
+    last = list(info.get("last_edges") or [])
+    if not last or str(last[-1].get("to")) != info["step"]:
+        return False
+    ans = str(last[-1].get("answer") or "").strip().casefold()
+    return ans.startswith(NO_CHANGE)
 
 
 MODE_TEXT = {
@@ -229,8 +253,8 @@ def build_prompt(info: dict, record: str, roles: dict, toolbox_row: dict, never:
     if tmpl:
         L.append("")
         L.append(f"## Command template (/{(info.get('command') or '').replace('.', '-')})")
-        L.append("(For this step's guidance only. Its procedure — `check`, `start`, `next`, repeating until a PM step — "
-                 "is the runner's job and is already done; the Contract at the end replaces it: this one step, one `advance`, then stop.)")
+        L.append("(The runner already ran `check`, started the record at this step and read `next`; "
+                 "the Contract at the end is the whole procedure: this one step, one `advance`, then stop.)")
         L.append(tmpl)
     if toolbox_row:
         L.append("")
@@ -254,6 +278,9 @@ def build_prompt(info: dict, record: str, roles: dict, toolbox_row: dict, never:
             L.append(f"Write your output into the record under the heading `{heading}` (or under the headings the step's Produces names), "
                      "then move the record with exactly one call:")
         L.append(f"  python3 framework/tools/orchestrate.py advance {record} --to <exit> [--when <n>]")
+        if pm_said_no_change(info):
+            L.append("The PM said the draft stands. Change nothing in the draft; write only a one-line note under the step heading "
+                     "that it is re-submitted unchanged, then advance.")
         L.append("Do not call start, do not edit other records, do not commit.")
         if info["mode"] == "challenger":
             L.append(f"If you found nothing on the full lane, `advance` refuses while a framing is unused: then run "
@@ -276,7 +303,20 @@ def tail(text: str, n: int = TAIL) -> str:
     return "\n".join(text.rstrip().splitlines()[-n:])
 
 
-def pm_stop_text(info: dict, record: str) -> str:
+COMMON_YES = ("yes", "execute", "accepted", "write it", "pm says yes")  # the exit a PM most often takes, by its condition
+
+
+def common_exit(info: dict) -> tuple:
+    """(exit, the phrase matched) for the most common answer, or (None, None) when no condition names one."""
+    for e in info.get("exits") or []:
+        when = str(e.get("when") or "").casefold()
+        for phrase in COMMON_YES:
+            if phrase in when:
+                return e, phrase
+    return None, None
+
+
+def pm_stop_text(info: dict, record: str, harness: str = "claude") -> str:
     L = [f"PM step: {info['step']} — {info['title']}",
          f"The PM must provide: {info.get('input') or info.get('what')}"]
     if info.get("what") and info.get("input"):
@@ -284,11 +324,18 @@ def pm_stop_text(info: dict, record: str) -> str:
     L.append("Options (the exits the YAML allows):")
     for e in info.get("exits") or []:
         L.append(f"  {e['index']}. {e['to']}" + (f"   when: {e['when']}" if e.get("when") else ""))
+    run_cmd = f"python3 framework/tools/run.py {record}" + (f" --harness {harness}" if harness != "claude" else "")
     L.append("Record the answer with:")
     L.append(f"  python3 framework/tools/orchestrate.py advance {record} --to <exit> [--when <n>] --answer \"<the PM's words>\"")
+    e, phrase = common_exit(info)
+    if e:
+        n = e["index"]
+        when = f" --when {n}" if e.get("when") else ""
+        L.append(f"Most common answer: --to {n}{when} (\"{e.get('when')}\")")
+        L.append(f"  python3 framework/tools/orchestrate.py advance {record} --to {n}{when} --answer \"{phrase}\" && {run_cmd}")
     cmd = info.get("command")
     L.append(f"Slash command: /{cmd.replace('.', '-')}" if cmd else "Slash command: none enters this step; answer with `advance` above")
-    L.append(f"Then run again: python3 framework/tools/run.py {record}")
+    L.append(f"Then run again: {run_cmd}")
     return "\n".join(L)
 
 
@@ -307,6 +354,7 @@ class Run:
         self.rows = []  # (n, step, role, harness, seconds, result)
         self.current = None  # (step, role, started) while a step is in flight, for the interrupt row
         self.pm_stops = 0
+        self.status_width = 0
         self.t0 = time.time()
         if not dry_run:
             self.dir.mkdir(parents=True, exist_ok=True)
@@ -322,15 +370,20 @@ class Run:
 
     def row(self, step: str, role: str, seconds: float, result: str):
         self.rows.append((self.n, step, role, self.harness, f"{seconds:.1f}", result))
+        self.write_summary("running")  # the row lands in run.md as soon as the step finishes
 
     def write_summary(self, outcome: str):
-        """run.md: one section per run of this record, appended (rewritten in place while the run goes on)."""
-        if self.dry_run or not self.rows:
+        """run.md: one section per run of this record, rewritten in place at every step start and end, so a second
+        terminal always sees the current state; the last write carries the final outcome line."""
+        if self.dry_run or not (self.rows or self.current):
             return  # a run that spawned nothing (a record already closed) leaves no section
         started = time.strftime("%Y-%m-%dT%H:%M", time.localtime(self.t0))
         marker = f"## run started {started} ({self.harness}, pid {os.getpid()})"
         L = [marker, "", f"outcome: {outcome}", "", "| n | step | role | harness | seconds | result |", "|---|---|---|---|---|---|"]
         L += [f"| {n} | {s} | {r} | {h} | {sec} | {res} |" for n, s, r, h, sec, res in self.rows]
+        if self.current and outcome == "running":
+            L.append(f"| {self.n} | {self.current[0]} | {self.current[1]} | {self.harness} | … | running since "
+                     f"{time.strftime('%H:%M:%S', time.localtime(self.current[2]))} |")
         section = "\n".join(L) + "\n"
         f = self.dir / "run.md"
         text = f.read_text(encoding="utf-8") if f.exists() else f"# runs of {self.record}\n\n"
@@ -338,15 +391,42 @@ class Run:
             text = text[:text.index(marker)]
         f.write_text(text.rstrip("\n") + "\n\n" + section, encoding="utf-8")
 
+    def status(self, outcome: str = None) -> None:
+        """The live line on stderr while a harness session runs: `<step> · <role> · <harness> · m:ss`, refreshed in
+        place on a TTY (one line per refresh otherwise); with `outcome`, the final line for that session."""
+        if not self.current:
+            return
+        el = int(time.time() - self.current[2])
+        line = f"{self.current[0]} · {self.current[1]} · {self.harness} · {el // 60}:{el % 60:02d}" + (f" · {outcome}" if outcome else "")
+        tty = sys.stderr.isatty()
+        if tty:
+            sys.stderr.write("\r" + line.ljust(self.status_width) + ("\n" if outcome else ""))
+            self.status_width = len(line)
+        else:
+            sys.stderr.write(line + "\n")
+        sys.stderr.flush()
+
     def spawn(self, prompt: str) -> tuple[int, str, float]:
         argv = harness_command(self.harness, self.h, prompt)
         t = time.time()
         try:
-            r = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True)
+            p = subprocess.Popen(argv, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         except OSError as e:
             raise Stuck(f"could not start harness {self.harness} (`{argv[0]}`): {e}")
-        out = r.stdout + ("\n[stderr]\n" + r.stderr if r.stderr.strip() else "")
-        return r.returncode, out, time.time() - t
+        self.status()
+        try:
+            while True:
+                try:
+                    stdout, stderr = p.communicate(timeout=STATUS_EVERY)
+                    break
+                except subprocess.TimeoutExpired:
+                    self.status()  # nothing is lost: communicate() keeps the output read so far
+        except BaseException:
+            p.kill()
+            p.wait()
+            raise
+        out = stdout + ("\n[stderr]\n" + stderr if stderr.strip() else "")
+        return p.returncode, out, time.time() - t
 
     def one_session(self, info: dict, prompt: str, label: str, expect_move: bool) -> tuple[bool, str, float, int]:
         """Spawn once (twice when the record did not change); return (moved, log text, seconds, last exit code).
@@ -368,13 +448,16 @@ class Run:
             log += [f"## attempt 1 (exit {code}, {sec:.1f}s)", out]
             moved = self.moved(before_step, before_hash, before_edges, expect_move)
             if not moved:
+                self.status("did not move; retrying once")
                 retry_prompt = build_prompt_again(prompt, tail(out))
                 code, out2, sec2 = self.spawn(retry_prompt)
                 sec += sec2
                 log += ["## retry prompt (appended to the prompt above)", retry_prompt[len(prompt):].strip(), "",
                         f"## attempt 2 (exit {code}, {sec2:.1f}s)", out2]
                 moved = self.moved(before_step, before_hash, before_edges, expect_move)
+            self.status(("moved" if expect_move else "changed the record") if moved else "did not move")
         except Stuck as e:
+            self.status("stuck")
             log += ["## stopped", str(e)]
             p = self.log(info["step"], "\n".join(log))
             self.row(info["step"], info["role"], sec, "stuck")
@@ -465,7 +548,7 @@ class Run:
                 return 0
             if info["mode"] == "pm":
                 self.pm_stops += 1
-                text = pm_stop_text(info, self.record)
+                text = pm_stop_text(info, self.record, self.harness)
                 self.n += 1
                 self.log(info["step"], text + "\n")
                 self.row(info["step"], "PM", 0.0, "waiting on PM")
@@ -478,6 +561,7 @@ class Run:
                             f"{info['step']}; run again to continue")
             self.n += 1
             self.current = (info["step"], info["role"], time.time())
+            self.write_summary("running")  # the header and the in-flight row, before the harness starts
             if info["mode"] == "auto":
                 self.auto_step(info)
             else:

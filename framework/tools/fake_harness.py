@@ -24,6 +24,9 @@ changes/ remembers it); FAKE_HARNESS_STALL=always makes it never move.
 For tests of the runner's move check: FAKE_HARNESS_OVERSTEP=<step ref> makes
 the fake, after its own advance at that step, answer the PM step it landed on
 itself (`advance --to 1 --answer fake`), which the runner must refuse.
+For tests of the runner's run.md: FAKE_HARNESS_SHOW_RUNMD=1 makes the fake print
+changes/runs/<record-stem>/run.md as it stands while the fake runs (so the step
+log shows what a second terminal would have seen mid-run).
 """
 from __future__ import annotations
 import os
@@ -113,6 +116,9 @@ def main() -> int:
     if not record or not step:
         print("fake harness: no record or step in the prompt")
         return 1
+    if os.environ.get("FAKE_HARNESS_SHOW_RUNMD"):
+        run_md = ROOT / "changes" / "runs" / Path(record).stem / "run.md"
+        print("fake harness: run.md now reads:\n" + run_md.read_text(encoding="utf-8") if run_md.exists() else "fake harness: no run.md yet")
     if stalled(step):
         print(f"fake harness: stalling at {step} (FAKE_HARNESS_STALL)")
         return 0

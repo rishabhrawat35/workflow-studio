@@ -42,7 +42,9 @@ it, and every state is a file.
   numbered legal exits, and the last edges taken. The AI does exactly that
   and nothing else.
 - `advance <record> --to <exit> --when <condition> [--answer …]` — the
-  only way to move. Refuses: an exit not in the YAML; a decision without
+  only way to move. Refuses: `--answer` at a step that is not a PM step
+  (first, before anything about the exit: "<step> is an AI step, not a PM
+  step; the runner (or the AI) moves it"); an exit not in the YAML; a decision without
   its condition or with a mismatched one; leaving a PM step without
   `--answer`; leaving a challenger step without a `## Findings — <step>`
   block, or with zero findings while a rerun framing is unused (full
@@ -150,7 +152,18 @@ steps itself and stops only at a PM step:
   isolation, no step sees the conversation that produced the last one. A
   `pm` step it prints in plain words (title, what the PM must provide, the
   options, the exact `advance … --to <exit> [--when <n>] --answer "…"`
-  command, the slash command) and stops.
+  command, the slash command) and stops. After the options it names the
+  most common answer — `Most common answer: --to 3 --when 3 ("PM says
+  yes")`, the first exit whose condition contains yes / execute / accepted /
+  write it — and prints the paste-ready `advance … --answer "yes" &&
+  python3 framework/tools/run.py <record>` line (`--harness` appended when
+  it is not `claude`); a step whose conditions name none of these (intake)
+  gets no such line.
+- While a harness session runs, stderr carries a live line `<step> · <role>
+  · <harness> · m:ss`, refreshed every 10 s (in place on a TTY, one line per
+  refresh otherwise) and a final line with the outcome (`moved`, `changed
+  the record`, `did not move; retrying once`, `did not move`, `stuck`);
+  stdout carries only the PM stop text and the summary, as before.
 - After each spawned step it re-reads `next` and checks the record's history,
   not only its step: exactly one new edge, taken from the step it spawned,
   carrying no PM answer; further edges are accepted only from `auto` steps
@@ -173,11 +186,17 @@ steps itself and stops only at a PM step:
   step's heading (a challenger: its findings block), then exactly one
   `advance` call, listed with the legal exits and their conditions; do not
   call `start`, do not edit other records, do not commit; a challenger that
-  found nothing is told about `rerun`. The template body is prefaced with a
-  note that its own procedure (`check`, `start`, `next`, repeat until a PM
-  step) is the runner's job and the contract replaces it, and its "the PM's
-  note" sentence is rewritten, since under the runner there is none. The
-  runner never puts record content into a prompt, only the path.
+  found nothing is told about `rerun`. Only the template's role and intent
+  lines are kept: every numbered line naming `check`, `start`, `next`,
+  `advance` or `Repeat` is dropped (the first live run showed the Writer
+  following that procedure instead of the contract), and one sentence says
+  the runner already ran `check`, started the record and read `next`; the
+  "the PM's note" sentence is rewritten, since under the runner there is
+  none. When the edge that entered `define.write` or `deliver.plan` carries
+  a PM answer starting with "no change" / "the draft stands" / "unchanged",
+  the contract adds: change nothing in the draft, write one line under the
+  step heading that it is re-submitted unchanged, then advance. The runner
+  never puts record content into a prompt, only the path.
 - Harnesses come from `harness.yaml`: `claude` runs `claude -p <prompt>
   --output-format text --allowedTools <list>` (Read, Edit, Write, Glob, Grep,
   `Bash(python3 framework/tools/*)`, `Bash(git status*)`, `Bash(git diff*)`,
@@ -185,7 +204,8 @@ steps itself and stops only at a PM step:
   file's `allowed_tools`); `codex` runs `codex exec <prompt> --sandbox
   workspace-write`; `fake` runs `framework/tools/fake_harness.py`, the
   stand-in the test suite uses (`FAKE_HARNESS_STALL` and
-  `FAKE_HARNESS_OVERSTEP` make it misbehave on purpose). The built-in Bash patterns are narrow on
+  `FAKE_HARNESS_OVERSTEP` make it misbehave on purpose;
+  `FAKE_HARNESS_SHOW_RUNMD` makes it echo `run.md` as it stands mid-run). The built-in Bash patterns are narrow on
   purpose: `Bash(python3 *)` is not among them, because `python3 -c` is any
   shell command; a product whose tests or run command need more names them
   in `allowed_tools` (`Bash(npm run test*)`, `Bash(python3 -m app*)`). The
@@ -227,4 +247,8 @@ runs of the same record; a run at a PM step also writes the question as
 ran or stopped at something, with a row per step: n, step, role, harness,
 seconds, result (`moved`, `moved (4 sessions)`, `advanced → …`, `waiting on
 PM`, `stuck`, `interrupted`; a harness that moved the record but exited
-non-zero shows `(harness exit n)`).
+non-zero shows `(harness exit n)`). The section is rewritten at every step
+start and end — the header with `outcome: running` and an in-flight row
+(`… | running since 13:16:53 |`) before the harness starts, each finished
+row as soon as its step ends, the final outcome line last — so a second
+terminal always sees the current state.

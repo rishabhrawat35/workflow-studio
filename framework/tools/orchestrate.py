@@ -17,9 +17,11 @@ Usage (from the product repository root, with framework/ copied in):
       --json prints the same as one JSON object for the runner (framework/tools/run.py)
   orchestrate.py advance <record.md> --to <step|bare step id|index|prefix> [--when "<condition|index>"]
                         [--answer "<PM's answer>"] [--lane small|full]
-      move the record along one edge. Refuses: an exit not in the YAML; a
-      decision without its condition; a mismatched condition; leaving a PM
-      step without --answer; leaving a challenger step without a findings
+      move the record along one edge. Refuses: --answer at a step that is
+      not a PM step (checked first: "<step> is an AI step, not a PM step; the
+      runner (or the AI) moves it"); an exit not in the YAML; a decision
+      without its condition; a mismatched condition; leaving a PM step
+      without --answer; leaving a challenger step without a findings
       block for that step, or with zero findings while a rerun framing is
       still unused (full lane); a fourth execute after three failed passes;
       --lane anywhere but at start or leaving define.sort; any exit from a
@@ -376,6 +378,10 @@ def cmd_advance(args, workflows, roles, commands):
     ex = exits(workflows, ref)
     if not ex:
         print(f"refused: {ref} is an end; the record is closed")
+        return 1
+    if cfg["mode"] != "pm" and args.answer:
+        # a person pasting the PM-stop command at a step the AI owns: say so before any --to / --when complaint
+        print(f"refused: {ref} is an AI step, not a PM step; the runner (or the AI) moves it")
         return 1
     tgt = resolve_target(ex, args.to)
     if not tgt:

@@ -211,6 +211,10 @@ nothing on non-trivial work is run again with one of the named framings.
   along an edge in the YAML with its condition; the AI never picks the
   next step itself. Challenges after a revision read only the delta since
   their last pass.
+- When the PM's answer says the draft stands ("no change", "the draft
+  stands", "unchanged"), the Writer or Planner it returns to changes
+  nothing: one line under the step heading that the draft is re-submitted
+  unchanged, then `advance`. The runner puts this in the prompt.
 - Every finalising step writes a decision where an alternative was
   rejected: `foundation.check` (accepted findings), `foundation.save`
   (rules with an alternative), `define.approve`, `deliver.approve-plan`

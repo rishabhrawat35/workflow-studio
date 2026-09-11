@@ -103,12 +103,30 @@ def runner_fixture(root: Path) -> None:
              ("define.approve", ["--to", "commit", "--when", "3", "--answer", "yes"]),
              ("deliver.approve-plan", ["--to", "execute", "--when", "1", "--answer", "execute"]),
              ("deliver.accept", ["--to", "commit", "--when", "1", "--answer", "accepted"])]
+    show = dict(os.environ, FAKE_HARNESS_SHOW_RUNMD="1")  # the fake echoes run.md as it stands mid-run into its log
     for pm_step, answer in stops:
-        step(f"runner: run to the PM stop {pm_step} (exit 3)", fake, cwd=root, expect=3)
+        print(f"== runner: run to the PM stop {pm_step} (exit 3)")
+        r = subprocess.run(fake, cwd=root, capture_output=True, text=True, env=show)
+        print("   " + r.stdout.rstrip().replace("\n", "\n   "))
+        if r.returncode != 3:
+            fail(f"runner: expected exit 3 at {pm_step}, got {r.returncode}: {r.stderr[-300:]}")
         text = (root / rec).read_text(encoding="utf-8")
         if f"step: {pm_step}" not in text:
             fail(f"runner: the record is not at {pm_step}")
+        if "Most common answer: --to" not in r.stdout or " && python3 framework/tools/run.py " not in r.stdout:
+            fail(f"runner: the PM stop at {pm_step} does not name the most common answer with the paste-ready command")
+        if not re.search(r"^\S+ · \S+ · fake · \d+:\d\d · moved$", r.stderr, re.M):
+            fail(f"runner: no live status line with an outcome on stderr:\n{r.stderr}")
         step(f"runner: PM answers at {pm_step}", [PY, orch, "advance", rec] + answer, cwd=root)
+    # run.md is written as the run goes: the challenge step's log shows the write step's row already there
+    mid = (root / "changes" / "runs" / "2026-09-11-1-runner" / "4-define.challenge.log").read_text(encoding="utf-8")
+    if "| 3 | define.write | Writer | fake |" not in mid or "| 4 | define.challenge | Challenger | fake | … | running since" not in mid:
+        fail("runner: run.md did not carry the finished step's row and the in-flight row while the next step was running")
+    print("== runner: run.md had the define.write row and the in-flight define.challenge row before the run ended")
+    r = subprocess.run([PY, orch, "advance", rec, "--to", "1", "--answer", "yes"], cwd=root, capture_output=True, text=True)
+    if r.returncode != 1 or "deliver.commit is an AI step, not a PM step; the runner (or the AI) moves it" not in r.stdout:
+        fail(f"runner: advance --answer at an AI step must be refused as such (got {r.returncode}: {r.stdout[-200:]})")
+    print("== runner: advance --answer at deliver.commit is refused as an AI step, before any --when complaint")
     step("runner: run to deliver.done (exit 0)", fake, cwd=root)
     text = (root / rec).read_text(encoding="utf-8")
     for needle in ("step: deliver.done", "## Findings — define.challenge", "## Findings — deliver.verify", "- [x] T001", "[security-reviewer]"):

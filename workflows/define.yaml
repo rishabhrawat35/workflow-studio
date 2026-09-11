@@ -194,7 +194,11 @@ steps:
       The id never changes even if the title or the placement does. Code
       built for a node carries the id as a tag; that is how changes are
       traced. Every answered question is written into the draft and the
-      record; the PM can veto any default at approve.
+      record; the PM can veto any default at approve. When the PM's answer
+      that re-entered this step says the draft stands ("no change",
+      "unchanged"), nothing in the draft is changed: only a one-line note
+      under the step heading that it is re-submitted unchanged, then on to
+      challenge.
     next: [challenge]
 
   - id: challenge

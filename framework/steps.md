@@ -405,7 +405,7 @@ Produces: Draft node(s): description, proposed acceptance criteria, proposed pla
 
 The AI writes each node under its stable id, in plain language, from what the PM said, checked against the architecture file. It proposes the placement (an existing parent or a new header, with the reason), proposes a split if the node is too large, and marks a node retired when the capability is being removed. Any product term not in the glossary is proposed as an addition. Where the discussion left a gap, the AI fills it with a stated default listed under "Assumptions" in the draft; at most three gaps become questions, asked one at a time, each with two to four options and a recommended one, in the order scope, then safety, then experience, then technology.
 
-Notes: The id never changes even if the title or the placement does. Code built for a node carries the id as a tag; that is how changes are traced. Every answered question is written into the draft and the record; the PM can veto any default at approve.
+Notes: The id never changes even if the title or the placement does. Code built for a node carries the id as a tag; that is how changes are traced. Every answered question is written into the draft and the record; the PM can veto any default at approve. When the PM's answer that re-entered this step says the draft stands ("no change", "unchanged"), nothing in the draft is changed: only a one-line note under the step heading that it is re-submitted unchanged, then on to challenge.
 
 Comes from:
 - `define.discuss` Discuss the capability — when it is business logic; write it
