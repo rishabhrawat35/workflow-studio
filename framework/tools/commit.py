@@ -78,7 +78,8 @@ def title_of(body: str, stem: str) -> str:
 
 
 def slug_of(stem: str) -> str:
-    return re.sub(r"^\d{4}-\d{2}-\d{2}-\d+-", "", stem)
+    """<date>-<n>-<slug> (a request) or <date>-<n>.<chunk>-<slug> (a child of a broken-down request) → <slug>."""
+    return re.sub(r"^\d{4}-\d{2}-\d{2}-\d+(?:\.\d+)?-", "", stem)
 
 
 def worktree_changes():

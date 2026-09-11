@@ -46,7 +46,9 @@ is set. `superseded_by` is the only line ever added to an existing file.
 
 ## Inputs
 Every step that finalises something where an alternative was rejected:
-`foundation.check` (an accepted finding), `foundation.save` (rules that
+`define.confirm-breakdown` (the confirmed chunks and their order),
+`define.confirm-impact` (the chosen treatment per dependant and per
+store of data), `foundation.check` (an accepted finding), `foundation.save` (rules that
 had an alternative: hosting, data store, auth; not "the run command"),
 `define.approve` (logic, criteria, placement, glossary additions),
 `deliver.approve-plan` (the plan; and each AI choice inside it that adds a
@@ -54,6 +56,28 @@ dependency or a stored data shape, not a folder name), `deliver.accept`
 (only if acceptance settled something the plan left open), every `drop`
 (the reason for stopping), `deliver.commit` (a lesson, category `process`
 or `code`).
+
+**Breakdown and impact decisions (convention).** Both are `category:
+product`, `made_by: PM`, `record:` the request, `nodes:` the chunk slugs
+or the removed node and its dependants, and `at_step` the gate that
+finalised them: `define.confirm-breakdown` or `define.confirm-impact`.
+`## Situation` names the request and the PM's answer; `## Decision` is
+the confirmed set (the chunks in order, each with what it depends on and
+its child record; or the removed node marked retired and, per dependant,
+the chosen treatment, plus keep / migrate / delete per store of data);
+`## Reasons` carries one "Instead of …" line per rejected alternative:
+for a breakdown, each alternative the proposal considered (a coarser
+split, a finer split, a different first chunk) and, when the PM said
+"one thing", the split itself; for an impact, each recommendation the
+PM overruled ("Instead of retiring `weekly-streak`, as recommended, it
+is kept by a replacement"). The breakdown decision is written by
+`orchestrate.py` when `define.spawn` runs
+(`decisions/D-<nnnn>-breakdown-<parent-slug>.md`); a re-spawn after
+`define.revise-breakdown` writes a new one with `supersedes:` and marks
+the earlier one `superseded_by:`. The impact decision is written by the
+AI at `define.write` from the `## Impact — PM answer` block. Neither is
+re-argued: the PM's choice is the decision, the recommendation its
+"instead of".
 
 ## Outputs
 `decisions/D-<nnnn>-<slug>.md` per decision; `decisions/INDEX.md`

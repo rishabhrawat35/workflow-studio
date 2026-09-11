@@ -150,7 +150,15 @@ steps:
     notes: >-
       When in doubt whether something is a finding, it is reported. A check
       that finds nothing on a rule that touches existing code is run once
-      more with a different framing.
+      more with a different framing. When the proposal removes a rule, the
+      check also writes the impact section Define uses for a removal,
+      against the delivered nodes that rely on the rule: each dependant
+      with its source (code tags, logic tree, decision log), what stops
+      working for a user, the options (retire it too, keep it by a
+      replacement, narrow the removal, postpone) with one recommendation
+      and its reason, and any stored data with keep, migrate or delete,
+      never defaulted to delete. The PM chooses at propose-rule, the
+      existing gate, and the choice is recorded as a decision.
     next:
       - to: propose-rule
         when: findings the PM must resolve

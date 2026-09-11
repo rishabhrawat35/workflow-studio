@@ -25,7 +25,14 @@ steps:
   define.to-foundation:  {mode: auto, role: Sorter,  inputs: [record]}
   define.to-fix:         {mode: auto, role: Sorter,  inputs: [record]}
   define.discuss: {mode: pm,   role: Writer,  inputs: [record, architecture, glossary, nodes-touched, sort-reason]}
-  define.write:          {mode: agent, role: Writer, inputs: [record, discussion-notes, architecture, glossary, logic-tree, decisions-touched]}
+  define.breakdown:      {mode: agent, role: Writer, inputs: [record, discussion-notes, architecture, logic-tree, glossary, pm-answer]}
+  define.confirm-breakdown: {mode: pm, role: Writer, inputs: [record, breakdown-section, decisions-index]}
+  define.spawn:          {mode: agent, role: Sorter, inputs: [record, breakdown-answer, queue, logic-index]}
+  define.broken-down:    {mode: auto, role: Sorter,  inputs: [record]}
+  define.revise-breakdown: {mode: agent, role: Sorter, inputs: [record, parent-record, discussion-notes, queue]}
+  define.impact:         {mode: agent, role: Writer, inputs: [record, discussion-notes, logic-tree, code-tags, glossary, decisions, architecture, pm-answer]}
+  define.confirm-impact: {mode: pm,   role: Writer,  inputs: [record, impact-section, decisions-index]}
+  define.write:          {mode: agent, role: Writer, inputs: [record, discussion-notes, architecture, glossary, logic-tree, decisions-touched, impact-answer]}
   define.challenge: {mode: challenger, role: Challenger, inputs: [draft, glossary, logic-tree, architecture, decisions-touched, delivered-node-version, delta-since-last-pass],
                           framings: [a new user of the product, the owner of the neighbouring nodes, the verifier who must test it]}
   define.approve: {mode: pm,   role: Writer,  inputs: [draft, findings, logic-delta, affected-nodes, decisions-index, decisions-brought-forward]}

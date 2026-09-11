@@ -127,4 +127,6 @@ commands:
     entry: false
     does: 'run this record to the next PM stop (framework/tools/run.py): the runner starts every AI step itself in a
       fresh harness process, advances handoffs, and stops only at a PM step (exit 3); ours, not Spec Kit''s. `meta: true`
-      because it enters whatever step the record is at; `start` refuses it'
+      because it enters whatever step the record is at; `start` refuses it. `--group <parent>` runs a broken-down
+      request: the parent while it is open, then the children in the confirmed order, releasing the next chunk itself
+      after one reaches deliver.done or is dropped; a waiting child is a PM-visible stop (exit 3)'

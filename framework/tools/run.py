@@ -10,14 +10,24 @@ ends itself, and stops at the first `pm` step with the question spelled out.
 Usage, from the product repository root:
   python3 framework/tools/run.py <record.md> [--harness claude|codex|fake] [--max-steps 60]
                                  [--dry-run] [--log-dir changes/runs]
+  python3 framework/tools/run.py [<record.md>] --group <parent.md> [same options]
+      a broken-down request: run the parent while it is open, then its children in the
+      confirmed order — after a child reaches deliver.done (or is dropped) the next
+      unblocked child is released (`advance --to define.discuss`) and the run continues
+      with it, which stops at its discussion (exit 3). Without --group a child's run
+      stops when that child closes. <record.md> may name the parent or one of its
+      children; omitted, the run picks the child in flight (else the first releasable one)
   python3 framework/tools/run.py --check-harness [--harness claude|codex]
       the harness is on PATH; prints its version
 
 Exit codes:
-  0  the record reached an end (or --dry-run / --check-harness finished): one summary line
-  3  a PM step: the question, the exact `advance` command with placeholders, the slash command
+  0  the record reached an end (or --dry-run / --check-harness finished): one summary line;
+     with --group, the group is closed (every chunk delivered or dropped) or nothing can be released
+  3  a PM step: the question, the exact `advance` command with placeholders, the slash command;
+     or a waiting child (a chunk whose dependency is not at deliver.done): the wait, in one sentence
   4  a step did not move the record after one retry, moved it in a way the contract forbids,
-     --max-steps was hit, or the harness could not be run: the reason and the log file
+     --max-steps was hit, the harness could not be run, or --group names a record that is not a
+     parent with children: the reason and the log file
   130  Ctrl-C
 
 Harness commands come from framework/orchestration/harness.yaml (command, args
@@ -303,7 +313,10 @@ def tail(text: str, n: int = TAIL) -> str:
     return "\n".join(text.rstrip().splitlines()[-n:])
 
 
-COMMON_YES = ("yes", "execute", "accepted", "write it", "pm says yes")  # the exit a PM most often takes, by its condition
+COMMON_YES = ("yes", "execute", "accepted", "write it", "pm says yes",
+              "proceed with the chosen set")  # the exit a PM most often takes, by its condition
+# the answer pasted for that phrase where the bare phrase would be refused: confirm-impact's answer must name every dependant
+ANSWER_FOR = {"proceed with the chosen set": "<dependant>: retire it too | keep it by <replacement> | narrow the removal to <…> | postpone; <store>: keep | migrate | delete"}
 
 
 def common_exit(info: dict) -> tuple:
@@ -316,7 +329,31 @@ def common_exit(info: dict) -> tuple:
     return None, None
 
 
-def pm_stop_text(info: dict, record: str, harness: str = "claude") -> str:
+def group_line(info: dict) -> str:
+    """One line on the group a record belongs to, from `next --json`'s `group`; empty for a record outside any group."""
+    g = info.get("group")
+    if not g:
+        return ""
+    tail = f"{g['delivered']} of {g['total']} delivered"
+    if g.get("dropped"):
+        tail += f"; {g['dropped']} dropped"
+    tail += ("; in flight: " + ", ".join(f"chunk {c}" for c in g["in_flight"])) if g.get("in_flight") else "; nothing in flight"
+    return f"Group: {g['title']} ({g['parent']}) — {tail}"
+
+
+def wait_stop_text(info: dict, record: str, harness: str = "claude") -> str:
+    """A waiting child (E9): the wait in one sentence, the release command, the group command."""
+    run_cmd = f"python3 framework/tools/run.py --group {info.get('parent')}" + (f" --harness {harness}" if harness != "claude" else "")
+    L = [f"Waiting: chunk {info.get('chunk')} of {info.get('parent')} waits for {info.get('wait')}; nothing runs until then.",
+         f"Release it when that holds: python3 framework/tools/orchestrate.py advance {record} --to define.discuss (refused before)",
+         f"Or run the group, which releases it itself: {run_cmd}"]
+    g = group_line(info)
+    if g:
+        L.append(g)
+    return "\n".join(L)
+
+
+def pm_stop_text(info: dict, record: str, harness: str = "claude", group: str = None) -> str:
     L = [f"PM step: {info['step']} — {info['title']}",
          f"The PM must provide: {info.get('input') or info.get('what')}"]
     if info.get("what") and info.get("input"):
@@ -324,7 +361,7 @@ def pm_stop_text(info: dict, record: str, harness: str = "claude") -> str:
     L.append("Options (the exits the YAML allows):")
     for e in info.get("exits") or []:
         L.append(f"  {e['index']}. {e['to']}" + (f"   when: {e['when']}" if e.get("when") else ""))
-    run_cmd = f"python3 framework/tools/run.py {record}" + (f" --harness {harness}" if harness != "claude" else "")
+    run_cmd = f"python3 framework/tools/run.py {f'--group {group}' if group else record}" + (f" --harness {harness}" if harness != "claude" else "")
     L.append("Record the answer with:")
     L.append(f"  python3 framework/tools/orchestrate.py advance {record} --to <exit> [--when <n>] --answer \"<the PM's words>\"")
     e, phrase = common_exit(info)
@@ -332,16 +369,19 @@ def pm_stop_text(info: dict, record: str, harness: str = "claude") -> str:
         n = e["index"]
         when = f" --when {n}" if e.get("when") else ""
         L.append(f"Most common answer: --to {n}{when} (\"{e.get('when')}\")")
-        L.append(f"  python3 framework/tools/orchestrate.py advance {record} --to {n}{when} --answer \"{phrase}\" && {run_cmd}")
+        L.append(f"  python3 framework/tools/orchestrate.py advance {record} --to {n}{when} --answer \"{ANSWER_FOR.get(phrase, phrase)}\" && {run_cmd}")
     cmd = info.get("command")
     L.append(f"Slash command: /{cmd.replace('.', '-')}" if cmd else "Slash command: none enters this step; answer with `advance` above")
     L.append(f"Then run again: {run_cmd}")
+    g = group_line(info)
+    if g:
+        L.append(g)
     return "\n".join(L)
 
 
 class Run:
-    def __init__(self, record: str, harness: str, log_dir: Path, dry_run: bool, max_steps: int):
-        self.record, self.harness, self.dry_run, self.max_steps = record, harness, dry_run, max_steps
+    def __init__(self, record: str, harness: str, log_dir: Path, dry_run: bool, max_steps: int, group: str = None):
+        self.record, self.harness, self.dry_run, self.max_steps, self.group = record, harness, dry_run, max_steps, group
         self.h = harness_config(harness)
         if not (ROOT / record).is_file():
             raise Stuck(f"no record at {record}; nothing was started and no log folder was created")
@@ -545,10 +585,18 @@ class Run:
             if info.get("closed") or not info.get("exits"):
                 self.write_summary(f"closed at {info['step']}")
                 print(self.summary(f"closed at {info['step']}"))
+                g = group_line(info)
+                if g:
+                    print(g)
                 return 0
+            if info["mode"] == "waiting":
+                # E9: a chunk whose dependency is not delivered is a PM-visible stop; nothing is spawned
+                print(wait_stop_text(info, self.record, self.harness))
+                print(self.summary(f"stopped: chunk {info.get('chunk')} waits on {info.get('waiting_on')}"))
+                return EXIT_PM
             if info["mode"] == "pm":
                 self.pm_stops += 1
-                text = pm_stop_text(info, self.record, self.harness)
+                text = pm_stop_text(info, self.record, self.harness, self.group)
                 self.n += 1
                 self.log(info["step"], text + "\n")
                 self.row(info["step"], "PM", 0.0, "waiting on PM")
@@ -587,6 +635,7 @@ def build_prompt_again(prompt: str, harness_tail: str) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("record", nargs="?")
+    ap.add_argument("--group", metavar="PARENT", help="a broken-down request: run its children in the confirmed order, releasing the next one after each deliver.done")
     ap.add_argument("--harness", default="claude", help="claude | codex | fake (framework/orchestration/harness.yaml)")
     ap.add_argument("--max-steps", type=int, default=60)
     ap.add_argument("--dry-run", action="store_true", help="print the prompt and the harness command for the current step; spawn nothing")
@@ -595,8 +644,8 @@ def main() -> int:
     a = ap.parse_args()
     if a.check_harness:
         return check_harness(a.harness)
-    if not a.record:
-        ap.error("record is required (or --check-harness)")
+    if not a.record and not a.group:
+        ap.error("record is required (or --group <parent>, or --check-harness)")
     if not ORCHESTRATE.exists():
         print("refused: framework/tools/orchestrate.py not found; run from the product repository root")
         return EXIT_STUCK
@@ -604,7 +653,18 @@ def main() -> int:
     if r.returncode != 0:
         print(f"refused: the system is not closed:\n{r.stdout}{r.stderr}")
         return EXIT_STUCK
-    run = Run(a.record, a.harness, Path(a.log_dir), a.dry_run, a.max_steps)
+    if a.group:
+        try:
+            return Group(a).loop()
+        except Stuck as e:
+            print(f"stuck: {e}")
+            return EXIT_STUCK
+    return run_one(a.record, a)
+
+
+def run_one(record: str, a) -> int:
+    """One record from wherever it is to its end or the next PM stop (the runner as it was before groups)."""
+    run = Run(record, a.harness, Path(a.log_dir), a.dry_run, a.max_steps, a.group)
     try:
         return run.loop()
     except Stuck as e:
@@ -620,6 +680,78 @@ def main() -> int:
               "`advance` last wrote (read its status line, then run again)")
         print(run.summary("interrupted"))
         return EXIT_INTERRUPTED
+
+
+class Group:
+    """`--group <parent>`: the parent while it is open, then the children in the confirmed order; after a child closes
+    (deliver.done or dropped) the next unblocked child is released with `advance --to define.discuss` and run on."""
+
+    def __init__(self, a):
+        self.a = a
+        self.parent = a.group
+        if not (ROOT / self.parent).is_file():
+            raise Stuck(f"--group {self.parent}: no such record")
+        info = read_next(self.parent)
+        if info.get("parent"):
+            raise Stuck(f"--group {self.parent} names a child (chunk {info.get('chunk')} of {info['parent']}); pass its parent: --group {info['parent']}")
+        if not info.get("group") and info.get("step") not in ("define.breakdown", "define.confirm-breakdown", "define.spawn"):
+            raise Stuck(f"--group {self.parent} names a record with no children that is not at the breakdown (it is at {info.get('step')}); "
+                        f"--group takes a parent that define.spawn has broken down, or one on its way there "
+                        f"(run the record itself: python3 framework/tools/run.py {self.parent})")
+        self.first = a.record
+        if self.first and self.first != self.parent:
+            finfo = read_next(self.first)
+            if finfo.get("parent") != self.parent:
+                raise Stuck(f"{self.first} is not a child of {self.parent}; --group runs the parent or one of its children")
+
+    def rows(self) -> tuple:
+        info = read_next(self.parent)
+        return info, list((info.get("group") or {}).get("chunks") or [])
+
+    def pick(self) -> str:
+        """The record to run next: the parent while open; else the first child in flight; else the first waiting child
+        that can be released (released here); else None."""
+        info, rows = self.rows()
+        if not info.get("closed") and info.get("exits"):
+            return self.parent
+        for r in rows:
+            if r["step"] not in ("deliver.done", "deliver.dropped", "define.dropped", "waiting"):
+                return r["file"]
+        for r in rows:
+            if r["step"] == "waiting":
+                rel = orchestrate("advance", r["file"], "--to", "define.discuss")
+                if rel.returncode == 0:
+                    print(f"group: released chunk {r['chunk']} ({r['file']}) — every dependency delivered or dropped")
+                    return r["file"]
+                print(f"group: chunk {r['chunk']} stays waiting — {(rel.stdout + rel.stderr).strip().splitlines()[-1]}")
+        return None
+
+    def loop(self) -> int:
+        rec = self.first or self.pick()
+        if rec and rec != self.parent and read_next(rec).get("mode") == "waiting":
+            rel = orchestrate("advance", rec, "--to", "define.discuss")   # a waiting child named on the command line: release it if it can be
+            if rel.returncode == 0:
+                print(f"group: released {rec} — every dependency delivered or dropped")
+        if rec is None:
+            print(self.closing())
+            return 0
+        while True:
+            print(f"group: running {rec}")
+            code = run_one(rec, self.a)
+            if code != 0:
+                return code
+            rec = self.pick()
+            if rec is None:
+                print(self.closing())
+                return 0
+
+    def closing(self) -> str:
+        info, rows = self.rows()
+        g = info.get("group") or {}
+        waiting = [r["chunk"] for r in rows if r["step"] == "waiting"]
+        if g and g.get("delivered", 0) + g.get("dropped", 0) == g.get("total", 0):
+            return f"group closed: {group_line(info)}"
+        return f"group: nothing to run — {group_line(info)}" + (f"; waiting: chunk {', chunk '.join(str(c) for c in waiting)}" if waiting else "")
 
 
 if __name__ == "__main__":

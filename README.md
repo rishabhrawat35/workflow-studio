@@ -2,15 +2,15 @@
 
 *A product-development framework in which one PM and one AI ship a product through three PM gates that a tool enforces, not advises.*
 
-**The PM says what the product should do; the AI sorts, drafts, challenges its draft, plans, builds and verifies; `orchestrate.py` refuses to move a change past a gate without that gate's artifact.**
+**The PM says what the product should do; the AI sorts, drafts, challenges its draft, plans, builds and verifies; `orchestrate.py` refuses to move a change past a gate without its artifact.**
 
-![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue) ![Works with 5 AI tools](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Copilot%20%C2%B7%20Gemini%20%C2%B7%20Cursor-informational) ![Status](https://img.shields.io/badge/status-working%2C%20unreleased-orange) ![Test cases](https://img.shields.io/badge/test%20cases-225-brightgreen)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue) ![Works with 5 AI tools](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Copilot%20%C2%B7%20Gemini%20%C2%B7%20Cursor-informational) ![Status](https://img.shields.io/badge/status-working%2C%20unreleased-orange) ![Test cases](https://img.shields.io/badge/test%20cases-396-brightgreen)
 
 **Status:** working, unreleased; on 2026-09-11 `python3 tools/check_all.py` printed `ALL CHECKS PASSED`.
 
 ![The map view of studio.html: the three workflows Foundation, Define business logic and Deliver code, the PM feeding define.intake and the result leaving at deliver.done](docs/map.png)
 
-`workflows/*.yaml` hold the workflows, `framework/tools/orchestrate.py` enforces them, [studio.html](studio.html) draws them; a product repository copies `framework/` in and runs the first command below.
+`workflows/*.yaml` hold the workflows, `framework/tools/orchestrate.py` enforces them, [studio.html](studio.html) draws them; a product repository copies `framework/` in and runs this:
 
 ```bash
 cp -r ~/Downloads/workflow-studio/framework . && cp -r ~/Downloads/workflow-studio/workflows framework/
@@ -18,7 +18,7 @@ python3 framework/tools/orchestrate.py check
 ```
 
 ```
-CLOSED — 51 steps, every one mapped to a role and mode; 21 commands, every one entering a real non-routing step; 1 meta command entering the record's current step; toolbox: 3 step row(s)
+CLOSED — 58 steps, every one mapped to a role and mode; 21 commands, every one entering a real non-routing step; 1 meta command entering the record's current step; toolbox: 3 step row(s)
 ```
 
 > An AI agent operating this framework in a product repository reads [For AI agents](#for-ai-agents), then that repository's `AGENTS.md` and `framework/README.md`.
@@ -50,17 +50,18 @@ CLOSED — 51 steps, every one mapped to a role and mode; 21 commands, every one
 - **Every draft is challenged first.** The architecture file, the node, the plan and the code each get a second AI pass in a fresh context ([challenger-pass.md](framework/components/challenger-pass.md)); zero findings are refused while a framing is unused.
 - **State lives in one file per request.** The record's front matter holds the step, the lane and every edge taken; any AI resumes with `orchestrate.py next`.
 - **Decisions are brought forward.** A gate answer with an alternative becomes a file under `decisions/` ([decision-log.md](framework/components/decision-log.md)), shown to the PM before a draft alters it.
-- **Commands carry the vocabulary of [GitHub Spec Kit](https://github.com/github/spec-kit).** `/speckit-specify`, `/speckit-plan` and `/speckit-implement` land in the folders Spec Kit uses, so a move either way is a file swap.
+- **A large request is cut with the PM; a removal shows its repercussions first.** Several capabilities stop at `define.confirm-breakdown` with the proposed chunks and their order; a removal stops at `define.confirm-impact` with every dependant and its options.
+- **Commands carry the vocabulary of [GitHub Spec Kit](https://github.com/github/spec-kit).** `/speckit-specify`, `/speckit-plan` and `/speckit-implement` land in the folders Spec Kit uses.
 
 ## The three workflows
 
 | Workflow | Owner | Question it answers | Steps | What the PM receives |
 |---|---|---|---|---|
-| `define` | PM | What should the product do? | 18 | One approved node (description and acceptance criteria) on the business side |
+| `define` | PM | What should the product do? | 25 | One approved node (description and acceptance criteria) on the business side |
 | `foundation` | PM | What may the AI build with? | 14 | The architecture file, the glossary, or one changed rule |
 | `deliver` | AI | Is it built and does it work? | 19 | Tagged, tested components, one commit, the record closed |
 
-![The define workflow opened in studio.html: 18 steps from define.intake to the four exits, with the PM INPUT, OUTPUT, ENTRY and EXIT badges](docs/define.png)
+![The define workflow opened in studio.html: 25 steps from define.intake to the five exits, with the PM INPUT, OUTPUT, ENTRY and EXIT badges](docs/define.png)
 
 ## Main path of a request
 
@@ -74,6 +75,8 @@ flowchart LR
   sort --> tofound[define.to-foundation] --> foundation[foundation.new-or-change]
   sort --> tofix[define.to-fix]
   discuss --> write[define.write] --> challenge[define.challenge] --> approve{define.approve}
+  discuss -- "several capabilities" --> breakdown[define.breakdown] --> cbreak{define.confirm-breakdown} --> spawn[define.spawn]
+  discuss -- "removes what others depend on" --> impact[define.impact] --> cimpact{define.confirm-impact} --> write
   approve --> commit[define.commit] --> todeliver[define.to-deliver]
   approve -- "PM wants changes" --> discuss
   todeliver --> trace[deliver.trace]
@@ -100,7 +103,7 @@ No package: a product repository holds a copy of `framework/`. Requirements:
 
 ### One command creates a product folder
 
-`tools/new_product.py` creates the folder, copies `framework/` and the workflows, fills `AGENTS.md` and `CLAUDE.md` with the two commands you give it, writes a starter `architecture.md`, installs the slash commands for your AI tool, and proves the result with `orchestrate.py check`. Spec Kit itself is not installed; the framework only reuses its command names. Run once, from any folder:
+`tools/new_product.py` creates the folder, copies `framework/` and the workflows, fills `AGENTS.md` and `CLAUDE.md` with the two commands you give it, writes a starter `architecture.md`, installs the slash commands for your AI tool, and proves the result with `orchestrate.py check`. Spec Kit itself is not installed. Run once, from any folder:
 
 ```bash
 pip install pyyaml
@@ -112,7 +115,7 @@ created /Users/rira/Downloads/my-product with framework/, framework/workflows/, 
 git: initialised
 claude: .claude/skills/
 installed 22 file(s); invoke as /speckit-<name> (Gemini: /speckit.<name>)
-CLOSED — 51 steps, every one mapped to a role and mode; 21 commands, every one entering a real non-routing step; 1 meta command entering the record's current step; toolbox: 3 step row(s)
+CLOSED — 58 steps, every one mapped to a role and mode; 21 commands, every one entering a real non-routing step; 1 meta command entering the record's current step; toolbox: 3 step row(s)
 
 Next:
   1. Complete architecture.md (or answer /speckit-constitution in your AI tool).
@@ -120,7 +123,7 @@ Next:
   3. Or from a terminal: python3 framework/tools/orchestrate.py start changes/<date>-1-<slug>.md --command speckit.specify
 ```
 
-Two optional flags add the toolboxes described later: `--with-archify` installs the architecture-diagram skill (Node.js 18 or later), and `--with-ecc` installs the ECC reviewers for the verify step, hooks off. The command refuses a folder that is not empty.
+`--with-archify` adds the architecture-diagram skill (Node.js 18 or later) and `--with-ecc` the ECC reviewers for the verify step, hooks off. The command refuses a folder that is not empty.
 
 <details><summary>The same steps by hand</summary>
 
@@ -161,7 +164,7 @@ installed 22 file(s); invoke as /speckit-<name> (Gemini: /speckit.<name>)
 ## Quickstart
 
 1. Create the product folder with one command ([Installation](#installation)).
-2. Describe the architecture with `/speckit-constitution Node 20 + Fastify backend under code/backend, Postgres on Supabase. Run with npm run dev. Never touch migrations/ by hand.`; then write the glossary.
+2. Describe the architecture with `/speckit-constitution Node 20 + Fastify backend under code/backend, Postgres on Supabase. Run with npm run dev.`; then write the glossary.
 3. State a request with `/speckit-specify Members can cancel a policy within 7 days of purchase and get the full premium back, as long as no claim was filed.`; the AI stops at `define.approve` with the challenged draft.
 4. Approve the logic with `/speckit-approve yes`; the node is saved under `logic/`.
 5. Run `/speckit-plan`; the AI stops at `deliver.approve-plan`: `execute`, `revise the plan`, `revise the logic` or `drop`.
@@ -188,7 +191,7 @@ Options (the exits the YAML allows):
 run: 1 step(s) run, 1 PM stop(s), 0.4s total (define.sort 0.1s); stopped at PM step define.discuss
 ```
 
-The full output spells out the next `advance --answer` command. Exit 3 is a PM stop, 0 a closed record, 4 a stuck step (or a harness that moved the record in a way the contract forbids, such as answering a PM gate itself); logs land in `changes/runs/<record>/`.
+The full output spells out the next `advance --answer` command. Exit 3 is a PM stop, 0 a closed record, 4 a stuck step or a harness that answered a PM gate itself; logs land in `changes/runs/<record>/`.
 
 ## Worked example: a refund within 7 days
 
@@ -252,7 +255,7 @@ last edges:
 
 ### define.challenge refuses to be skipped or empty
 
-After exit 3 of `define.sort` and the PM's notes at `discuss`, the draft reached `define.challenge`.
+After the PM's notes at `discuss`, the draft reached `define.challenge`.
 
 ```bash
 python3 framework/tools/orchestrate.py advance changes/2026-09-10-1-refund-unused-policy.md --to approve
@@ -262,7 +265,7 @@ python3 framework/tools/orchestrate.py advance changes/2026-09-10-1-refund-unuse
 refused: write the block `## Findings — define.challenge` into the record before leaving (a line "none" if nothing was found)
 ```
 
-With the block written as `none`, the same command is refused again and `rerun` names the next framing.
+With the block written as `none`, the same command is refused again; `rerun` names the next framing.
 
 ```bash
 python3 framework/tools/orchestrate.py advance changes/2026-09-10-1-refund-unused-policy.md --to approve
@@ -312,7 +315,7 @@ refused: speckit.implement is not an entry command; it continues a record alread
 
 ### deliver.commit makes the one commit
 
-The record passed `plan`, `challenge-plan`, `approve-plan` (`execute`), `execute`, `verify` and `passes`; the PM answered `accepted` at `deliver.accept`, and `commit.py` committed the delivery's files only.
+After `approve-plan` (`execute`), `verify` and `passes`, the PM answered `accepted` at `deliver.accept`, and `commit.py` committed the delivery's files only.
 
 ```bash
 python3 framework/tools/commit.py changes/2026-09-10-1-refund-unused-policy.md
@@ -328,9 +331,33 @@ committed 2792e4c: refund-unused-policy: 2026-09-10-1-refund-unused-policy
 files: changes/2026-09-10-1-refund-unused-policy.md, code/COMPONENTS.md, code/backend/refunds, decisions/INDEX.md, logic/INDEX.md, logic/policy/refund-unused-policy.md
 ```
 
+### define.confirm-breakdown stops a large request
+
+A request naming several capabilities stops once more after the discussion: this 2026-09-11 run with the test harness proposed three chunks for "a habit tracker: log a habit, see a weekly streak, get a reminder" and waited for the PM's yes, after which `spawn` wrote one child record per chunk and `run.py --group` ran them in order (two lines naming the generic `advance` form are cut from the output). A removal of a capability others depend on stops the same way at `define.confirm-impact` with each dependant, what stops working and one recommendation, and the PM answers one line per dependant.
+
+```bash
+python3 framework/tools/run.py changes/2026-09-11-1-habit-tracker.md --harness fake
+```
+
+```
+PM step: define.confirm-breakdown — PM confirms the chunks and their order?
+The PM must provide: PM's yes to the chunks and the order; or, in words, which chunks to merge, split, reorder or drop; or "one thing"; or stop. On a revision reopened from a child: yes to the proposed correction, or the change to it.
+What happens here: PM reads the proposed chunks, the dependencies, the order and the reasons, and the alternatives considered. A yes sends the group to spawn. Words that change the chunks send the record back to the breakdown for a rewrite. "One thing" means the request is written as a single node after all; the proposal stays in the record as history.
+Options (the exits the YAML allows):
+  1. define.spawn   when: yes, these chunks in this order
+  2. define.breakdown   when: merge, split, reorder or drop chunks; rewrite from the PM's words
+  3. define.write   when: one thing after all; write it as a single node
+  4. define.drop   when: PM stops the request
+Most common answer: --to 1 --when 1 ("yes, these chunks in this order")
+  python3 framework/tools/orchestrate.py advance changes/2026-09-11-1-habit-tracker.md --to 1 --when 1 --answer "yes" && python3 framework/tools/run.py changes/2026-09-11-1-habit-tracker.md --harness fake
+Slash command: none enters this step; answer with `advance` above
+Then run again: python3 framework/tools/run.py changes/2026-09-11-1-habit-tracker.md --harness fake
+run: 1 step(s) run, 1 PM stop(s), 0.6s total (define.breakdown 0.2s); stopped at PM step define.confirm-breakdown
+```
+
 ## Reference tables
 
-Command names follow [GitHub Spec Kit](https://github.com/github/spec-kit) where the meaning overlaps; eight entry commands create a record at `define.intake`, every other command continues a record already at its step or is refused ([commands.yaml](framework/orchestration/commands.yaml)).
+Eight entry commands create a record at `define.intake`; every other command continues a record already at its step or is refused ([commands.yaml](framework/orchestration/commands.yaml)).
 
 <details>
 <summary>The 22 slash commands</summary>
@@ -358,14 +385,14 @@ Command names follow [GitHub Spec Kit](https://github.com/github/spec-kit) where
 | `/speckit-drop` | `define.intake` | The PM stops a request at the current gate or through a queue instruction | none |
 | `/speckit-taskstoissues` | `deliver.execute` | The AI mirrors the task list as GitHub issues through `tasks_to_issues.py`; it moves nothing and is refused before the plan is approved | `speckit.taskstoissues` |
 | `/speckit-git-commit` | `deliver.commit` | The AI makes the one code commit through `commit.py`; any record not at `deliver.commit` is refused | `speckit.git.commit` |
-| `/speckit-run` | the record's current step (`meta`) | The runner `run.py` starts every AI step in a fresh harness process and stops at the next PM step | none |
+| `/speckit-run` | the record's current step (`meta`) | The runner `run.py` starts every AI step in a fresh harness process and stops at the next PM step; `--group <parent>` runs a broken-down request chunk by chunk | none |
 
 </details>
 
-The 51 steps below come from `workflows/*.yaml`; [framework/steps.md](framework/steps.md) carries every condition.
+The 58 steps below come from `workflows/*.yaml`; [framework/steps.md](framework/steps.md) carries every condition.
 
 <details>
-<summary>The 18 steps of define</summary>
+<summary>The 25 steps of define</summary>
 
 | Step | Owner | Title | Labels |
 |---|---|---|---|
@@ -379,6 +406,13 @@ The 51 steps below come from `workflows/*.yaml`; [framework/steps.md](framework/
 | `to-foundation` | PM | Set or change the foundation first | EXIT → `foundation.new-or-change` · OUTPUT |
 | `to-fix` | PM | Send the fix straight to delivery | EXIT → `deliver.trace` · OUTPUT |
 | `discuss` | PM | Discuss the capability | PM INPUT · OUTPUT |
+| `breakdown` | AI | Propose the chunks | OUTPUT |
+| `confirm-breakdown` | PM | PM confirms the chunks and their order? | PM INPUT · OUTPUT |
+| `spawn` | AI | Create one record per chunk | OUTPUT |
+| `broken-down` | PM | Broken down; the chunks continue as their own records | EXIT · OUTPUT |
+| `revise-breakdown` | AI | Send the correction back to the parent | OUTPUT |
+| `impact` | AI | Show the repercussions | OUTPUT |
+| `confirm-impact` | PM | PM chooses per dependant? | PM INPUT · OUTPUT |
 | `write` | AI | Write or update the node, or the node set | OUTPUT |
 | `challenge` | AI | Challenge the logic | OUTPUT |
 | `approve` | PM | PM approves the logic? | PM INPUT · OUTPUT |
@@ -444,8 +478,8 @@ The 51 steps below come from `workflows/*.yaml`; [framework/steps.md](framework/
 
 | Tool | Run from | Purpose | Refuses |
 |---|---|---|---|
-| `framework/tools/orchestrate.py` | product repository | runs `check`, `start`, `next`, `advance` and `rerun` on a change record | an edge not in the YAML, a PM step without `--answer`, a challenger step without its findings block, a fourth `execute` after three failed passes |
-| `framework/tools/install_commands.py` | product repository | writes the 21 command templates for one tool or all five | an unknown `--agent` |
+| `framework/tools/orchestrate.py` | product repository | runs `check`, `start`, `next`, `advance` and `rerun` on a change record; `advance` out of `define.spawn` writes the child records and the group block | an edge not in the YAML, a PM step without `--answer`, a challenger step without its findings block, a fourth `execute` after three failed passes, a child record started by hand, a waiting child released before its dependency is delivered, a fourth round at `confirm-breakdown` or `confirm-impact` |
+| `framework/tools/install_commands.py` | product repository | writes the 22 command templates for one tool or all five | an unknown `--agent` |
 | `framework/tools/tasks_to_issues.py` | product repository | creates one GitHub issue per task line and writes the number back; `--dry-run` is the default without `gh` | a record before `deliver.execute` |
 | `framework/tools/commit.py` | product repository | makes the one code commit: regenerates the indexes, sets the node status and moves the record to `deliver.done` | a record not at `deliver.commit`, a git index with unrelated staged changes, a decision log that fails validation |
 | `framework/tools/logic_index.py`, `components_index.py`, `decisions_index.py` | product repository | generate `logic/INDEX.md`, `code/COMPONENTS.md`, `decisions/INDEX.md` | a decision file with a missing field, a wrong category or a broken supersede chain (exit 1) |
@@ -458,11 +492,10 @@ The 51 steps below come from `workflows/*.yaml`; [framework/steps.md](framework/
 
 ## How it works
 
-- **The YAML is the state machine.** [map.yaml](map.yaml) names the entry `define.intake` and the exit `deliver.done`; [SCHEMA.md](SCHEMA.md) defines the step types `step`, `decision`, `handoff` and `end`.
-- **The change record is the state.** Its front matter carries `step`, `lane`, `waiting_on`, `failed_passes`, `rerun_count` and `history`.
-- **Each step has one role and one mode.** [roles.yaml](framework/orchestration/roles.yaml) maps the 51 steps to six roles and four modes; a role is a fresh context reading only its inputs.
+- **The YAML is the state machine.** [map.yaml](map.yaml) names the entry and the exit; [SCHEMA.md](SCHEMA.md) defines the four step types.
+- **The change record is the state.** Its front matter carries `step`, `lane`, `waiting_on`, `failed_passes`, `rerun_count` and `history`; a child of a broken-down request adds `parent`, `chunk` and `depends_on`.
+- **Each step has one role and one mode.** [roles.yaml](framework/orchestration/roles.yaml) maps the 58 steps to six roles; a role is a fresh context reading only its inputs.
 - **Each term the PM reads has one definition file.** The 12 files under [framework/components/](framework/components/) share five sections.
-- **The renderer works offline.** `studio.html` embeds the workflows.
 
 <details>
 <summary>File layout of a product repository</summary>
@@ -483,15 +516,18 @@ AGENTS.md, CLAUDE.md       the operating card, copied from framework/templates
 
 ## Tests and evaluation
 
-`tools/check_all.py` proves this repository in one run, stopping at the first failure:
+`tools/check_all.py` proves this repository in one run of 207 checks, in eight stages, stopping at the first failure.
 
-1. `tools/validate.py` checks the workflow files and `map.yaml`.
-2. `tools/build.py` rebuilds `studio.html`.
-3. `tools/docs.py` regenerates `framework/steps.md`.
-4. The offline check confirms `studio.html` requests nothing external.
-5. `orchestrate.py check` proves the system is closed.
-6. The generators and the installer run on a fixture; its broken decision file must be refused.
-7. The runner drives a record with the fake harness from `define.sort` to `deliver.done`, retries a stalled step once, and exits 4 for a step that never moves or a harness that answers a PM gate itself.
+| Stage | What is proven |
+|---|---|
+| 1 | `tools/validate.py` accepts the workflow files and `map.yaml` |
+| 2 | `tools/build.py` rebuilds `studio.html` |
+| 3 | `tools/docs.py` regenerates `framework/steps.md` |
+| 4 | `studio.html` requests nothing external |
+| 5 | `orchestrate.py check` prints `CLOSED` |
+| 6 | The generators and the installer run on a fixture; its broken decision file is refused |
+| 7 | The runner drives a record with the fake harness from `define.sort` to `deliver.done`, retries a stalled step once, and exits 4 for a step that never moves or a harness that answers a PM gate itself |
+| 8 | A large request becomes three child records run as a group; a removal with two dependants is confirmed and split, replacement first; eleven edge cases end in the stated refusal; the challenger's nine attacks (a hand-released child, spawn twice, a chunk mid-Deliver under a revision, the reopened gate, the stores of an impact answer, E18 from task tags, slugs and order, a queue edited by hand, a dropped middle chunk) are refused or held as stated |
 
 ```bash
 python3 tools/check_all.py | tail -5
@@ -505,9 +541,7 @@ python3 tools/check_all.py | tail -5
 ALL CHECKS PASSED
 ```
 
-(The last two lines before the verdict differ on a machine where the archify CLI is installed: the compare on the fixture runs there.)
-
-[framework/test-cases.md](framework/test-cases.md) is the regression suite for the workflows: 240 cases in sections A–M and O–S, each with a verdict and its step path; section N re-runs every case against the current workflows.
+[framework/test-cases.md](framework/test-cases.md) is the regression suite for the workflows: 396 cases in sections A–M and O–T, each with a verdict and its step path; section N re-runs every case against the current workflows.
 
 ## Troubleshooting
 
@@ -519,6 +553,8 @@ ALL CHECKS PASSED
 | ``refused: zero findings on the full lane with framings left; run `rerun` and challenge again`` | a challenger found nothing on a full-lane record while a framing was unused | run `orchestrate.py rerun` and challenge again under the framing it names |
 | `refused: deliver.trace has no edge to execute. Legal exits: 1. deliver.plan` | the requested step is not an exit of the current one | take the exit `next` lists, by name or by number |
 | `refused: the record is at deliver.trace, not deliver.commit …` | `commit.py` was run before the PM accepted | walk the record to `deliver.accept` and record the PM's `accepted` first |
+| `Waiting: chunk 2 of changes/2026-09-11-1-habit-tracker.md waits for chunk 1 (…) to reach deliver.done` | the runner was given a child record whose dependency is not delivered | run the group instead: `python3 framework/tools/run.py --group changes/2026-09-11-1-habit-tracker.md` |
+| `refused: changes/2026-09-11-1.2-habit-tracker-streak.md carries \`parent: …\`; children are created by define.spawn; run the parent (E10)` | `start` was run on a child record | run the parent; `spawn` creates the children |
 | `install_commands.py: error: argument --agent: invalid choice: 'vim'` | the tool is not one of the five supported | choose `claude`, `codex`, `copilot`, `cursor`, `gemini` or `all` |
 
 ## For AI agents
@@ -530,14 +566,14 @@ The agent is the **AI** role; the PM is the only human.
 3. Run `python3 framework/tools/orchestrate.py next changes/2026-09-10-1-refund-unused-policy.md`, do exactly that step, and write the output into the record.
 4. Move only with `python3 framework/tools/orchestrate.py advance changes/2026-09-10-1-refund-unused-policy.md --to 3 --when 3`, adding `--answer "the PM's words"` at a PM step.
 5. A `refused:` line names a missing artifact or the only legal exit; it is never an error to work around.
-6. Stop and show the PM the question whenever `next` shows `mode: pm`.
+6. Stop and show the PM the question whenever `next` shows `mode: pm`; never answer `confirm-breakdown` or `confirm-impact` yourself.
 7. As a challenger, read only the listed inputs and return findings only.
 
 No code before `deliver.approve-plan` says `execute`, no saved node before `define.approve`, no record marked done before `deliver.accept`.
 
 ## Customizing the workflows
 
-The YAML is the source of truth; `studio.html` and `framework/steps.md` are generated from it, never edited by hand.
+`studio.html` and `framework/steps.md` are generated from the YAML, never edited by hand.
 
 | Goal | File to edit | Command to run afterwards |
 |---|---|---|
@@ -552,7 +588,7 @@ The YAML is the source of truth; `studio.html` and `framework/steps.md` are gene
 - Not a deployment pipeline: a change ends at a commit the PM has seen work.
 - Not a multi-approver system: one PM, one AI.
 - Not a spec-per-feature tool: the whole product is one logic tree.
-- `orchestrate.py` records what the AI writes without judging it; a one-line findings block satisfies the gate.
+- `orchestrate.py` records what the AI writes without judging it; a one-line findings block satisfies a gate.
 
 ## Further documentation
 
@@ -564,12 +600,12 @@ The YAML is the source of truth; `studio.html` and `framework/steps.md` are gene
 | [framework/steps.md](framework/steps.md) | Every step with its conditions, generated from the YAML |
 | [SCHEMA.md](SCHEMA.md) and [map.yaml](map.yaml) | What a workflow file may contain; the entry and exit of the whole system |
 | [DECISIONS.md](DECISIONS.md) | The append-only log of design decisions, newest at the bottom |
-| [framework/test-cases.md](framework/test-cases.md) | The regression suite of 225 cases |
+| [framework/test-cases.md](framework/test-cases.md) | The regression suite of 396 cases |
 | [framework/templates/AGENTS.md](framework/templates/AGENTS.md) and [CLAUDE.md](framework/templates/CLAUDE.md) | The operating card a product repository copies in (`CLAUDE.md` is one line, `@AGENTS.md`); the root [AGENTS.md](AGENTS.md) is the card for editing this repository |
 
 ## Support and contributing
 
-The repository is public at [github.com/rishabhrawat35/workflow-studio](https://github.com/rishabhrawat35/workflow-studio), with no CONTRIBUTING.md yet. A bug report is an issue with the output of `python3 tools/check_all.py`; a workflow change follows [AGENTS.md](AGENTS.md).
+The repository is public at [github.com/rishabhrawat35/workflow-studio](https://github.com/rishabhrawat35/workflow-studio). A bug report is an issue with the output of `python3 tools/check_all.py`; a workflow change follows [AGENTS.md](AGENTS.md).
 
 ## Acknowledgements
 

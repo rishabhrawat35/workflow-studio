@@ -147,7 +147,7 @@ Produces: Findings the PM must resolve, written into the record, if any
 
 A second, independent AI pass checks the proposal against the rest of the architecture file: contradictions, tools the AI cannot reach, required content it would remove. A finding the PM has marked "accepted as is" is not reported again. The PM's "not needed" or "stop" is routed here.
 
-Notes: When in doubt whether something is a finding, it is reported. A check that finds nothing on a rule that touches existing code is run once more with a different framing.
+Notes: When in doubt whether something is a finding, it is reported. A check that finds nothing on a rule that touches existing code is run once more with a different framing. When the proposal removes a rule, the check also writes the impact section Define uses for a removal, against the delivered nodes that rely on the rule: each dependant with its source (code tags, logic tree, decision log), what stops working for a user, the options (retire it too, keep it by a replacement, narrow the removal, postpone) with one recommendation and its reason, and any stored data with keep, migrate or delete, never defaulted to delete. The PM chooses at propose-rule, the existing gate, and the choice is recorded as a decision.
 
 Comes from:
 - `foundation.propose-rule` Propose the changed rule
@@ -257,7 +257,7 @@ Type: decision. Owner: AI.
 
 Produces: The kind chosen, the reason, and the lane (small or full), written into the record's state
 
-The AI reads the architecture file and searches the logic tree and the queue, then sorts the request and writes why. The PM overrules the sorting at the first PM step of the chosen path: settled (a question), confirm-exists, discuss (which can redirect to any other path), the Foundation input step (which can say "not needed"), or deliver.approve-plan.
+The AI reads the architecture file and searches the logic tree and the queue, then sorts the request and writes why. The sort reason also states two flags that do not route: whether the request is large (it names several capabilities, several user roles, or a whole product) and whether it is breaking (it names a delivered node or rule that others depend on, or removes one; "no dependants found (tags, tree, glossary)" when it removes something nobody depends on). Both flags feed the discussion. The PM overrules the sorting at the first PM step of the chosen path: settled (a question), confirm-exists, discuss (which can redirect to any other path), the Foundation input step (which can say "not needed"), or deliver.approve-plan.
 
 Notes: When in doubt the AI chooses the path with more PM gates and says why: build over question, logic over fix, foundation over logic. Where two kinds both apply (new logic that also needs a rule), the foundation path wins; the logic follows once the rule is in. A change to the meaning of an existing glossary term is a cross-cutting change to every node that uses it. A bug is sorted as a fix when the AI can name the delivered criterion the symptom violates; the PM need not name it. Lane: "small" when the request touches one existing node, adds no component and needs no rule; otherwise "full". A small lane keeps every gate but runs each challenge once and keeps the plan to one paragraph.
 
@@ -379,7 +379,7 @@ PM provides: What the product must do, for whom, where it sits in the tree, what
 
 Produces: Discussion notes appended to the record
 
-PM and the AI talk it through (a page or capability, then its sub-flows, e.g. login page > logout, forgot password). Inputs: the architecture file, the glossary, and for a change the current node(s). The discussion is where the PM redirects a wrongly sorted request.
+PM and the AI talk it through (a page or capability, then its sub-flows, e.g. login page > logout, forgot password). Inputs: the architecture file, the glossary, and for a change the current node(s). The discussion is where the PM redirects a wrongly sorted request. When the sort reason flagged the request as large, the discussion ends with a proposed breakdown; when it flagged it as breaking, with the repercussions shown before anything is written. A small request never sees either.
 
 Comes from:
 - `define.sort` What kind of request is this? — when new logic, a change to an existing node, or a cross-cutting change to several nodes
@@ -392,9 +392,130 @@ Comes from:
 
 Goes to:
 - `define.write` Write or update the node, or the node set — when it is business logic; write it
+- `define.breakdown` Propose the chunks — when several capabilities; propose the chunks
+- `define.impact` Show the repercussions — when this removes or changes something others depend on; show the repercussions
+- `define.revise-breakdown` Send the correction back to the parent — when on a child record, building this chunk showed the split or the order is wrong
 - `define.to-fix` Send the fix straight to delivery — when the logic is unchanged; it is a fix
 - `define.confirm-exists` PM confirms it already exists? — when it already exists
 - `define.to-foundation` Set or change the foundation first — when it needs the foundation first
+- `define.drop` Drop the request — when PM stops the request
+
+### `define.breakdown` — Propose the chunks
+
+Type: step. Owner: AI.
+
+Produces: A breakdown section in the record: the chunks (one line each, in the PM's words where possible), what each depends on, why each line is there, the recommended order with one reason per position, why it is not split further, and the alternatives considered. A rewrite appends a new proposed block; the old one is never edited.
+
+The AI reads the discussion notes, the architecture file, the logic tree and the glossary and writes the breakdown it proposes. On a later pass it rewrites from the PM's words at the gate (merge, split, reorder, drop) and appends the new proposal under the old one.
+
+Notes: Propose a split when the discussion names more than one capability, more than one user role, or a whole product; when in doubt propose one and let the PM say "one thing". Every chunk is a capability a user could see delivered on its own; a purely technical layer is folded into the capability that first needs it. Order: dependencies first; among independent chunks, the one that de-risks the rest (a rule, a shared term, an integration) before the one with most user value; every position carries its reason. More chunks than the PM can hold in one reading means the request is a document: say so and offer the PRD path (one record per request, no group). Two chunks touching one node share an explicit dependency; the second waits for the first's delivery. Foundation first: a whole-product request with no architecture file goes to Foundation as today; this step is refused until the architecture file exists, and the breakdown is proposed only when Foundation has returned to discuss.
+
+Comes from:
+- `define.discuss` Discuss the capability — when several capabilities; propose the chunks
+- `define.confirm-breakdown` PM confirms the chunks and their order? — when merge, split, reorder or drop chunks; rewrite from the PM's words
+- `define.confirm-impact` PM chooses per dependant? — when a chosen treatment needs a replacement built first; make the set chunks, replacement before removal
+
+Goes to:
+- `define.confirm-breakdown` PM confirms the chunks and their order?
+
+### `define.confirm-breakdown` — PM confirms the chunks and their order?
+
+Type: decision. Owner: PM. Labels: PM INPUT.
+
+PM provides: PM's yes to the chunks and the order; or, in words, which chunks to merge, split, reorder or drop; or "one thing"; or stop. On a revision reopened from a child: yes to the proposed correction, or the change to it.
+
+Produces: The answer, appended verbatim under "Breakdown — PM answer"; a decision entry with the confirmed set and, as "instead of" lines, the proposals and options the PM rejected. A revision supersedes the earlier decision.
+
+PM reads the proposed chunks, the dependencies, the order and the reasons, and the alternatives considered. A yes sends the group to spawn. Words that change the chunks send the record back to the breakdown for a rewrite. "One thing" means the request is written as a single node after all; the proposal stays in the record as history.
+
+Notes: The loop back to breakdown runs at most three times; after the third round only write (one node) or drop are open. The PM's choice is recorded as the decision, with the recommendation as "instead of"; the AI does not re-argue it.
+
+Comes from:
+- `define.breakdown` Propose the chunks
+
+Goes to:
+- `define.spawn` Create one record per chunk — when yes, these chunks in this order
+- `define.breakdown` Propose the chunks — when merge, split, reorder or drop chunks; rewrite from the PM's words
+- `define.write` Write or update the node, or the node set — when one thing after all; write it as a single node
+- `define.drop` Drop the request — when PM stops the request
+
+### `define.spawn` — Create one record per chunk
+
+Type: step. Owner: AI.
+
+Produces: One child change record per confirmed chunk, in the confirmed order, each carrying the parent, its chunk number and what it depends on; chunk 1 at the discussion, the others waiting on the chunk they depend on; a group block in the queue; the breakdown decision written.
+
+The AI creates the child records from the confirmed breakdown. Each child's lane is set from its chunk size (small: one node, no component); the parent is always full. On a revision the existing children keep their files and history, new chunks get new files, removed chunks are dropped with the reason, and the order is rewritten; a delivered chunk is never touched.
+
+Notes: Refused when two chunks touch one node without an explicit dependency between them, and when a child's slug collides with an existing record. Children are created only here; a child started by hand is refused.
+
+Comes from:
+- `define.confirm-breakdown` PM confirms the chunks and their order? — when yes, these chunks in this order
+
+Goes to:
+- `define.broken-down` Broken down; the chunks continue as their own records
+
+### `define.broken-down` — Broken down; the chunks continue as their own records
+
+Type: end. Owner: PM. Labels: EXIT.
+
+Produces: The parent record closed as broken down; the queue tracks the group, "n of m delivered".
+
+Comes from:
+- `define.spawn` Create one record per chunk
+
+Goes to: nothing; the workflow ends here.
+
+### `define.revise-breakdown` — Send the correction back to the parent
+
+Type: step. Owner: AI.
+
+Produces: The proposed correction (old chunks against proposed chunks, with the reason) appended to the parent record; the parent reopened at the confirmation of the chunks; this child paused, waiting on the parent.
+
+Reached only from a child record's discussion. The AI writes what building this chunk showed about the split or the order and reopens the parent so the PM confirms the corrected breakdown. Refused for a chunk already delivered.
+
+Comes from:
+- `define.discuss` Discuss the capability — when on a child record, building this chunk showed the split or the order is wrong
+
+Goes to:
+- `define.handed-over` Handed over; the record continues in Foundation or Delivery
+
+### `define.impact` — Show the repercussions
+
+Type: step. Owner: AI.
+
+Produces: An impact section in the record: what is removed or changed and what the user loses; every dependant with its source in brackets, what stops working for a user, the options and one recommendation with its reason; the rules and decisions affected; every store of data affected with keep, migrate or delete and a recommendation; and anything suspected but not traceable, listed as possible, unverified.
+
+The AI traces the dependants of the node being removed or changed and writes the impact section from the logic tree, the code tags, the glossary and the decision log. On a later pass it revises the analysis or the options from the PM's words at the gate.
+
+Notes: Dependants come from the logic tree (nodes that name the node or its glossary terms), the code tags (@node) and active decisions; never from memory. A dependant the AI cannot trace to one of these is listed as "possible, unverified". For every dependant the options are: retire it too; keep it by replacing what it needed (a replacement chunk); narrow the removal so it keeps working; postpone. One recommendation, one reason. Stored data affected by the removal is named with the choice keep / migrate / delete, and the PM chooses; "delete" is never the default. Refused while no architecture file exists, and refused while a named dependant's record is in Deliver, until that record closes (one change in flight per node). A rule removal follows the Foundation path, where check-rule writes the same section.
+
+Comes from:
+- `define.discuss` Discuss the capability — when this removes or changes something others depend on; show the repercussions
+- `define.confirm-impact` PM chooses per dependant? — when revise the analysis or the options
+
+Goes to:
+- `define.confirm-impact` PM chooses per dependant?
+
+### `define.confirm-impact` — PM chooses per dependant?
+
+Type: decision. Owner: PM. Labels: PM INPUT.
+
+PM provides: PM's choice for every dependant (retire it too, keep it by a replacement, narrow the removal, postpone) and for every store of data (keep, migrate, delete), one line each; or what to revise in the analysis or the options; or stop.
+
+Produces: The answer, appended under "Impact — PM answer", one line per dependant; a decision entry with the confirmed set and, as "instead of" lines, the recommendations the PM overruled. A revision supersedes.
+
+PM reads what is removed, the dependants and their sources, what stops working, the options with the recommendation, and the stored data. The chosen set goes to write as one node set: the removed node marked retired plus each dependant's chosen treatment. When a kept dependant needs a replacement built first, the set becomes chunks with the replacement ordered before the removal, and the breakdown is proposed from it.
+
+Notes: The loop back to impact runs at most three times; after the third round only write or drop are open. The PM's choice is recorded as the decision, with the recommendation as "instead of"; the AI does not re-argue it.
+
+Comes from:
+- `define.impact` Show the repercussions
+
+Goes to:
+- `define.write` Write or update the node, or the node set — when proceed with the chosen set
+- `define.impact` Show the repercussions — when revise the analysis or the options
+- `define.breakdown` Propose the chunks — when a chosen treatment needs a replacement built first; make the set chunks, replacement before removal
 - `define.drop` Drop the request — when PM stops the request
 
 ### `define.write` — Write or update the node, or the node set
@@ -403,12 +524,14 @@ Type: step. Owner: AI.
 
 Produces: Draft node(s): description, proposed acceptance criteria, proposed placement in the tree, any proposed glossary additions; or a node marked retired.
 
-The AI writes each node under its stable id, in plain language, from what the PM said, checked against the architecture file. It proposes the placement (an existing parent or a new header, with the reason), proposes a split if the node is too large, and marks a node retired when the capability is being removed. Any product term not in the glossary is proposed as an addition. Where the discussion left a gap, the AI fills it with a stated default listed under "Assumptions" in the draft; at most three gaps become questions, asked one at a time, each with two to four options and a recommended one, in the order scope, then safety, then experience, then technology.
+The AI writes each node under its stable id, in plain language, from what the PM said, checked against the architecture file. It proposes the placement (an existing parent or a new header, with the reason), proposes a split if the node is too large, and marks a node retired when the capability is being removed. When the record carries an impact answer, the node set is drafted from it: the removed node marked retired plus each dependant's chosen treatment and the chosen handling of stored data. Any product term not in the glossary is proposed as an addition. Where the discussion left a gap, the AI fills it with a stated default listed under "Assumptions" in the draft; at most three gaps become questions, asked one at a time, each with two to four options and a recommended one, in the order scope, then safety, then experience, then technology.
 
 Notes: The id never changes even if the title or the placement does. Code built for a node carries the id as a tag; that is how changes are traced. Every answered question is written into the draft and the record; the PM can veto any default at approve. When the PM's answer that re-entered this step says the draft stands ("no change", "unchanged"), nothing in the draft is changed: only a one-line note under the step heading that it is re-submitted unchanged, then on to challenge.
 
 Comes from:
 - `define.discuss` Discuss the capability — when it is business logic; write it
+- `define.confirm-breakdown` PM confirms the chunks and their order? — when one thing after all; write it as a single node
+- `define.confirm-impact` PM chooses per dependant? — when proceed with the chosen set
 
 Goes to:
 - `define.challenge` Challenge the logic
@@ -419,7 +542,7 @@ Type: step. Owner: AI.
 
 Produces: A findings section in the record (what was found and how it was fixed), the logic delta (what changes against the delivered version, in plain words) and the list of other nodes affected, for the PM
 
-A second, independent AI pass reads the draft, the glossary, the logic tree and the architecture file. It reports ambiguity, criteria that cannot be verified, conflicts with the architecture rules, terms not in the glossary, and a placement that makes the tree harder to read. It also traces the business side: every other node whose text or links the change affects is listed for the PM, and a conflict with an existing node names that node as one the PM must revise next. For a change it writes the logic delta: what the node said before, what it says now. It searches the decision log: a draft that alters an active decision is reported, and that decision (situation, decision, reasons) is put in front of the PM at approve, side by side with the new one.
+A second, independent AI pass reads the draft, the glossary, the logic tree and the architecture file. It reports ambiguity, criteria that cannot be verified, conflicts with the architecture rules, terms not in the glossary, and a placement that makes the tree harder to read. It also traces the business side: every other node whose text or links the change affects is listed for the PM, and a conflict with an existing node names that node as one the PM must revise next. For a change it writes the logic delta: what the node said before, what it says now. It searches the decision log: a draft that alters an active decision is reported, and that decision (situation, decision, reasons) is put in front of the PM at approve, side by side with the new one. When the record carries an impact section, the challenge compares its dependants against the code tags (@node, every file under code/, tests included), the logic tree and the decision log, and reports every tagged node the section omits as a finding before approve.
 
 Notes: Non-trivial means the draft touches an existing node or has more than one criterion. A challenge that finds nothing on non-trivial work is run once more with a different framing (as a new user; as the owner of the neighbouring nodes; as the verifier who must test it) before the draft goes to the PM; in the small lane it runs once. When the record returns here after a PM revision, the challenge reads only the delta since its last pass plus the parts that delta touches, never the whole draft again.
 
@@ -491,6 +614,8 @@ The draft is discarded, the change record is closed as dropped, and any request 
 
 Comes from:
 - `define.discuss` Discuss the capability — when PM stops the request
+- `define.confirm-breakdown` PM confirms the chunks and their order? — when PM stops the request
+- `define.confirm-impact` PM chooses per dependant? — when PM stops the request
 - `define.approve` PM approves the logic? — when PM stops the request
 
 Goes to:
@@ -503,6 +628,7 @@ Type: end. Owner: PM. Labels: EXIT.
 Comes from:
 - `define.to-foundation` Set or change the foundation first
 - `define.to-fix` Send the fix straight to delivery
+- `define.revise-breakdown` Send the correction back to the parent
 - `define.to-deliver` Send to delivery
 
 Goes to: nothing; the workflow ends here.

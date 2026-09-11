@@ -73,7 +73,9 @@ it work (or seen the evidence). Releasing to users is outside the framework.
   pass, so the PM judges finished work. Three per ordinary change; nothing
   can be cut without losing the guarantee each one holds. `define.discuss`,
   `define.settled` and `define.confirm-exists` are PM steps but not gates:
-  they steer, they do not approve.
+  they steer, they do not approve. `define.confirm-breakdown` and
+  `define.confirm-impact` are gates a large request or a removal meets
+  once, after the discussion; a small addition never sees them.
 - **Sorting** — `define.sort`, AI-owned: reads the architecture file,
   searches the tree, and routes a request. The PM overrules at the first PM
   step of the chosen path: `define.confirm-exists` (already exists),
@@ -107,6 +109,34 @@ it work (or seen the evidence). Releasing to users is outside the framework.
 - **Lane** — `small` (touches one existing node, adds no component, needs
   no rule): every gate kept, each challenge runs once, the plan is one
   paragraph. `full`: everything. Set by `define.sort`, held in the record.
+- **Chunk** — one capability a user could see delivered on its own, cut
+  from a large request (several capabilities, several user roles, or a
+  whole product) at `define.breakdown` and confirmed by the PM at
+  `define.confirm-breakdown`. A purely technical layer is never a chunk;
+  it is folded into the capability that first needs it.
+- **Parent** — the record of a large request once its chunks are
+  confirmed; `define.spawn` closes it at `define.broken-down` and the
+  queue tracks its group from then on.
+- **Child** — the record `define.spawn` writes for one chunk,
+  `changes/<date>-<n>.<chunk>-<slug>.md`, carrying `parent`, `chunk` and
+  `depends_on`; it runs through every gate like any record, in the
+  confirmed order. Created only by `spawn`; never revised once delivered.
+- **Group** — the children of one parent: one block in `changes/QUEUE.md`
+  ("n of m delivered"), one runner command (`run.py --group <parent>`),
+  one breakdown decision per confirmation.
+- **Waiting** — the state of a child whose dependency is not yet at
+  `deliver.done`: a pseudo-step outside the workflow files with one exit,
+  the release to `define.discuss`, refused until every dependency is
+  delivered or dropped. `next` states the wait and `run.py` exits 3 with
+  it.
+- **Impact** — the section `define.impact` writes for a removal or
+  breaking change: what is removed, every dependant with its source (the
+  tree, the code tags, the decision log; never memory), what stops
+  working for a user, the options per dependant with one recommendation,
+  and the stored data. The PM chooses per dependant at
+  `define.confirm-impact`. A removal with no dependants has no impact
+  stop. (The Foundation step `foundation.impact` is the older handoff of
+  a proposed rule to Deliver; the two share a name, not a meaning.)
 - **Role** — Sorter, Writer, Planner, Builder, Verifier, Challenger; one
   per step, in `orchestration/roles.yaml`; each a fresh context reading
   only the step's inputs.
@@ -130,6 +160,30 @@ record is born there. `define.sort` routes it and writes why:
   foundation, stop) → `write` → `challenge` → `approve` (criteria confirmed
   here; changed criteria go back through `challenge`; "stop" →
   `define.drop`) → `commit` → `to-deliver`.
+- a large request (the sort reason flags it: several capabilities,
+  several user roles, or a whole product) → `define.discuss` →
+  `breakdown` (the AI proposes the chunks, their dependencies, the order
+  with reasons, the alternatives) → `confirm-breakdown`: the PM says yes
+  (→ `spawn`: one child record per chunk, chunk 1 at `discuss`, the rest
+  waiting; the parent ends at `broken-down`), or merges, splits, reorders
+  or drops chunks in words (→ `breakdown` again, three rounds at most),
+  or "one thing" (→ `write`, a single node), or stops. Each child then
+  runs the ordinary path above with its own gates; a child's discussion
+  can send a correction back (`revise-breakdown` → the parent reopens at
+  `confirm-breakdown`, old chunks beside proposed ones; a delivered chunk
+  or one in Deliver is never touched, and while children exist the
+  reopened gate takes only a yes or a rewrite).
+- a removal or breaking change (the sort reason flags it: a delivered
+  node or rule with dependants) → `define.discuss` → `impact` (what is
+  removed, every dependant with its source, what stops working, options
+  with one recommendation, stored data) → `confirm-impact`: the PM
+  chooses per dependant and per store of data (→ `write`, the node set:
+  the retired node plus each treatment), or asks for a revision (→
+  `impact`, three rounds at most), or a kept dependant needs a
+  replacement built first (→ `breakdown`: the set becomes chunks,
+  replacement before removal), or stops. `challenge` then compares the
+  impact section against the code tags and reports any dependant it
+  omits. A removal nobody depends on goes `discuss → write` as before.
 - needs the foundation → `define.to-foundation` → `foundation`: a new
   product writes the architecture file, `foundation.check` challenges it
   (findings back to the PM; "not needed" returns to `discuss`; "stop" drops),
@@ -170,7 +224,11 @@ ordinary change the PM is stopped at `define.discuss` and then at the three
 gates, `define.approve`, `deliver.approve-plan` and `deliver.accept`
 (`define.intake` is answered when the record is started, before the first
 run); after `accepted` the same command runs `commit → was-rule → done` and
-exits 0. The runner checks every move against the record's history: a step
+exits 0. For a group, `run.py --group <parent>` runs the parent while it
+is open, then the children in the confirmed order, releasing the next
+chunk itself after one reaches `deliver.done` or is dropped; a waiting
+child is a stop with the wait reason (exit 3). The runner checks every
+move against the record's history: a step
 whose front matter was edited by hand, a harness that answered a PM step
 itself, or one that ran on into the next step stops the run (exit 4).
 See `orchestration/README.md`, "Layer 2: the runner".
@@ -215,8 +273,30 @@ nothing on non-trivial work is run again with one of the named framings.
   stands", "unchanged"), the Writer or Planner it returns to changes
   nothing: one line under the step heading that the draft is re-submitted
   unchanged, then `advance`. The runner puts this in the prompt.
+- A large request is split, in doubt: more than one capability, user
+  role or product in the discussion means the AI proposes chunks and the
+  PM says "one thing" if it is one. Every chunk is a capability a user
+  could see delivered alone; dependencies go first, then the chunk that
+  de-risks the rest, then the one with most user value, each position
+  with its reason; two chunks on one node share an explicit dependency;
+  more chunks than the PM can hold in one reading is a document, and the
+  AI says so and offers the PRD path; no architecture file means
+  Foundation first, and the breakdown waits for it.
+- A removal shows its repercussions before anything is written.
+  Dependants come from the tree, the code tags and the active decisions,
+  never from memory; one the AI cannot trace is "possible, unverified".
+  Every dependant gets the four options (retire it too, keep it by a
+  replacement, narrow the removal, postpone) and one recommendation with
+  one reason; every store of data gets keep, migrate or delete with the
+  PM choosing, and "delete" is never the default. A removal is refused
+  while a dependant's record is mid-Deliver; a rule removal goes through
+  Foundation, where `check-rule` writes the same section. The PM's choice
+  is the decision, the recommendation its "instead of"; the AI does not
+  re-argue it.
 - Every finalising step writes a decision where an alternative was
-  rejected: `foundation.check` (accepted findings), `foundation.save`
+  rejected: `define.confirm-breakdown` and `define.confirm-impact` (the
+  confirmed chunks or treatments; the rejected alternatives and overruled
+  recommendations as "instead of"), `foundation.check` (accepted findings), `foundation.save`
   (rules with an alternative), `define.approve`, `deliver.approve-plan`
   (the plan; AI choices that add a dependency or a stored data shape),
   `deliver.accept`, `deliver.commit` (lessons), every `drop` (which also
@@ -243,8 +323,9 @@ Choices this reference makes where the workflows are silent; marked
   logic/INDEX.md           generated by framework/tools/logic_index.py: the KT overview
   decisions/               the decision log: decisions/D-<nnnn>-<slug>.md, one per decision that had an alternative (product, business, ui, frontend, backend, code, infra, software, process); decisions/INDEX.md generated and validated by framework/tools/decisions_index.py
   AGENTS.md, CLAUDE.md     the operating card (from framework/templates), exact commands filled in
-  changes/                 one change record per request, born at intake: changes/<YYYY-MM-DD>-<n>-<slug>.md
-  changes/QUEUE.md         the index: waiting requests in order, the one in flight, dependencies, PM-blocked count
+  changes/                 one change record per request, born at intake: changes/<YYYY-MM-DD>-<n>-<slug>.md; a chunk of a broken-down request: changes/<YYYY-MM-DD>-<n>.<chunk>-<slug>.md
+  changes/QUEUE.md         the index: waiting requests in order, the one in flight, dependencies, PM-blocked count; one group block per broken-down request
+  changes/runs/            the runner's logs: one folder per record
   code/<system>/<component>/   components and their tests, per system named in the architecture file
   code/COMPONENTS.md       generated by framework/tools/components_index.py: component → system → nodes
   docs/                    optional: architecture.archify.json, and architecture.html / architecture.delta.{html,json} written by framework/tools/archify_delta.py (see components/architecture-file.md)
@@ -273,6 +354,35 @@ Choices this reference makes where the workflows are silent; marked
   on it are re-sorted (a bug against the old version may be gone). The
   queue shows how many records wait on the PM and since when; the AI may
   add at most one request of its own while the PM is away.
+- **Parent, child, group.** A large request confirmed at
+  `define.confirm-breakdown` is a *parent*; `define.spawn` writes one
+  *child* record per confirmed chunk, named
+  `changes/<YYYY-MM-DD>-<n>.<chunk>-<slug>.md` after the parent, with
+  `parent`, `chunk` and `depends_on` in its front matter; the children of
+  one parent are its *group*. The parent ends at `define.broken-down`; each
+  child runs as its own record through every gate, in the confirmed order.
+  Children are created only by `spawn` (`start` refuses a record with
+  `parent`), are readable only while the parent file and its PM-answer
+  block exist, and are never revised once delivered. A chunk's slug is
+  unique across every record, so a child's commit message carries it like
+  any other record's. `changes/QUEUE.md` carries one group block per parent
+  (fenced by `<!-- group: <parent> -->` … `<!-- /group -->`), rewritten by
+  `orchestrate.py` on every move of a child or of the parent: the chunk
+  table with each one's step and what it waits on, and "n of m delivered".
+  Every breakdown or impact answer is a decision in the log; a revision
+  supersedes the earlier one. See `components/change-record.md`.
+- **Waiting.** Chunk 1 starts at `define.discuss`; the others start at the
+  pseudo-step `waiting` (`waiting_on: chunk <n>`, the first unmet
+  dependency; a chunk with no explicit dependency depends on the previous
+  chunk). `waiting` is in no workflow file: its one exit,
+  `advance --to define.discuss`, is refused until every dependency is at
+  `deliver.done` or dropped (a dropped dependency hands its own
+  dependencies on, so the wait moves to the next one). A child whose
+  `step:` was edited by hand past `waiting` while a dependency is open is
+  refused until put back. `next` states the wait; `run.py` exits 3 with it;
+  `run.py --group <parent>` releases the next unblocked child itself after
+  a child reaches `deliver.done` or is dropped, and stops at its
+  discussion.
 - **Every step writes its output to disk before the next step starts.**
   Resume after any interruption: read the queue and the record's status
   line, redo only the current step from its last saved output. For a PM
