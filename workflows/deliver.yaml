@@ -54,7 +54,8 @@ steps:
       Optional diagram (convention): when the architecture file names
       archify as a tool, the plan also renders docs/architecture.archify.json
       to docs/architecture.html and, for a change that touches components,
-      an Architecture Delta of before and after, linked from the plan
+      an Architecture Delta of before and after (docs/architecture.delta.html
+      with its receipt docs/architecture.delta.json), linked from the plan
       section; the diagram is an aid for the PM at approve-plan, never a
       gate input, and its absence is not a finding.
     next: [challenge-plan]
@@ -71,8 +72,11 @@ steps:
       sources that are missing or outdated; a coverage table with one row
       per acceptance criterion (criterion, has a task, task ids) where an
       empty row is a finding; a plan that alters an active decision without
-      bringing it forward; and any code words in the plan section. Findings
-      are fixed before the PM sees it.
+      bringing it forward; and any code words in the plan section. When the
+      plan carries an archify Architecture Delta (see the plan step's
+      notes), the pass also reads its receipt (docs/architecture.delta.json)
+      and reports every component or connection marked removed that the
+      plan section does not name. Findings are fixed before the PM sees it.
     notes: >-
       Non-trivial means the change touches existing code or more than one
       criterion. A challenge that finds nothing on non-trivial work is run
